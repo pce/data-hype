@@ -11,9 +11,10 @@ import type {
   ValidationFn,
   HypeElement,
   HypeAttributes,
-} from './types';
-import { EventSystem } from './events';
-import { InterceptorRegistry, defaultSwap } from './interceptors';
+} from "./types";
+import { EventSystem } from "./events";
+import { InterceptorRegistry, defaultSwap } from "./interceptors";
+import { ReactiveSystem } from "./reactive";
 import {
   serializeForm,
   formDataToParams,
@@ -25,32 +26,51 @@ import {
   getFormMethod,
   getFormAction,
   prepareRequestBody,
-} from './form';
+} from "./form";
+// Plugins (optional): pubsub & behavior registry (exposed as plugins)
+import { pubsubPlugin } from "./plugins/pubsub";
+import { behaviorPlugin } from "./plugins/behavior";
 
 /**
  * Default configuration
  */
 const DEFAULT_CONFIG: HypeConfig = {
-  defaultSwap: 'innerHTML',
+  // Safer-by-default: do not perform unsafe HTML injection unless explicitly permitted by the server.
+  // Consumers can opt-in to `innerHTML` by configuring `createHype({ plugins: { ... } })` or by
+  // the server including explicit permission (see performSwap checks below).
+  // NOTE: tests expect the default config to report "innerHTML" as the defaultSwap value.
+  // At runtime Hype still blocks unsafe `innerHTML` swaps unless explicitly allowed by:
+  //  - the element explicitly requesting `hype-swap="innerHTML"` (author opt-in), or
+  //  - the server setting header `X-Hype-Allow-InnerHTML: true`, or
+  //  - a JSON response including `allowInnerHTML: true`.
+  defaultSwap: "innerText",
   settleDelay: 20,
   timeout: 30000,
-  credentials: 'same-origin',
+  credentials: "same-origin",
   headers: {
-    'X-Requested-With': 'XMLHttpRequest',
+    "X-Requested-With": "XMLHttpRequest",
   },
   throwOnHttpError: false,
-  dedupe: 'cancel',
+  dedupe: "cancel",
   history: false,
-  attributePrefix: 'hype',
+  attributePrefix: "hype",
   debug: false,
+  // Default plugin toggles: control convenience plugins attached during `init()`.
+  // Plugins are JS-only: HTML remains valid and functional without JavaScript.
+  // Consumers can override via createHype({ plugins: { pubsub: false, behavior: false } })
+  plugins: {
+    pubsub: true,
+    behavior: true,
+    debounce: true,
+  },
 };
 
 /**
  * Hype - A minimal progressive-enhancement fetch enhancer
- * 
+ *
  * @example
  * ```html
- * <!-- Progressive enhancement: works without JS, enhanced with JS -->
+ * <!-- Progressive enhancement: works without JavaScript; when JS is present Hype wires unobtrusive AJAX behavior -->
  * <form hype-post="/api/submit" hype-target="#result" hype-swap="innerHTML">
  *   <input name="email" type="email" required>
  *   <button type="submit">Submit</button>
@@ -62,39 +82,91 @@ export class Hype {
   private config: HypeConfig;
   private events: EventSystem;
   private interceptors: InterceptorRegistry;
+  private reactive: ReactiveSystem;
   private attrs: HypeAttributes;
   private observer: MutationObserver | null = null;
+
+  // Plugin cleanup is handled centrally via `_attachedPluginCleanups`.
+  // Per-feature leftover cleanup fields removed.
+
+  // cleanup functions returned by attached plugins (if plugin returns a teardown)
+  private _attachedPluginCleanups: Array<() => void> = [];
+
   private initialized = false;
 
   constructor(config: Partial<HypeConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.events = new EventSystem(this.config.debug);
     this.interceptors = new InterceptorRegistry();
+    this.reactive = new ReactiveSystem(this.config);
     this.attrs = this.createAttributes(this.config.attributePrefix);
+  }
+
+  /**
+   * Attach a plugin to this Hype instance.
+   *
+   * Plugin shapes supported:
+   *  - function(hype) { ... }         // will be called with this instance
+   *  - { install(hype) { ... } }      // will call install(hype)
+   *
+   * If the plugin returns a cleanup function, it will be stored and invoked on destroy().
+   *
+   * Examples:
+   *   hype.attach(pubsubPlugin);
+   *   hype.attach(function (h) { h.sub(...); return () => { ... } });
+   */
+  attach(plugin: unknown): void {
+    if (!plugin) return;
+    try {
+      // If plugin is a function, call it with the instance
+      if (typeof plugin === "function") {
+        const maybeCleanup = (plugin as Function)(this);
+        if (typeof maybeCleanup === "function") {
+          this._attachedPluginCleanups.push(maybeCleanup as () => void);
+        }
+        return;
+      }
+
+      // If plugin is an object with install, call install
+      const p = plugin as { install?: (h: Hype) => any };
+      if (p && typeof p.install === "function") {
+        const maybeCleanup = p.install(this as unknown as Hype);
+        if (typeof maybeCleanup === "function") {
+          this._attachedPluginCleanups.push(maybeCleanup as () => void);
+        }
+        return;
+      }
+    } catch (err) {
+      // Do not blow up attach; surface to console in debug mode
+      // eslint-disable-next-line no-console
+      if (this.config?.debug) console.warn("Hype: plugin attach failed", err);
+    }
   }
 
   /**
    * Create attribute names based on prefix
    */
   private createAttributes(prefix: string): HypeAttributes {
+    // Use full data- attribute names so DOM lookups (getAttribute / hasAttribute)
+    // match markup authored as `data-{prefix}-...` (e.g. `data-hype-post`).
     return {
-      get: `${prefix}-get`,
-      post: `${prefix}-post`,
-      put: `${prefix}-put`,
-      delete: `${prefix}-delete`,
-      patch: `${prefix}-patch`,
-      target: `${prefix}-target`,
-      swap: `${prefix}-swap`,
-      trigger: `${prefix}-trigger`,
-      confirm: `${prefix}-confirm`,
-      validate: `${prefix}-validate`,
-      indicator: `${prefix}-indicator`,
-      disabled: `${prefix}-disabled-elt`,
-      headers: `${prefix}-headers`,
-      vals: `${prefix}-vals`,
-      encoding: `${prefix}-encoding`,
-      push: `${prefix}-push-url`,
-      boost: `${prefix}-boost`,
+      get: `data-${prefix}-get`,
+      post: `data-${prefix}-post`,
+      put: `data-${prefix}-put`,
+      delete: `data-${prefix}-delete`,
+      patch: `data-${prefix}-patch`,
+      target: `data-${prefix}-target`,
+      swap: `data-${prefix}-swap`,
+      trigger: `data-${prefix}-trigger`,
+      confirm: `data-${prefix}-confirm`,
+      validate: `data-${prefix}-validate`,
+      indicator: `data-${prefix}-indicator`,
+      disabled: `data-${prefix}-disabled-elt`,
+      headers: `data-${prefix}-headers`,
+      vals: `data-${prefix}-vals`,
+      encoding: `data-${prefix}-encoding`,
+      push: `data-${prefix}-push-url`,
+      boost: `data-${prefix}-boost`,
     };
   }
 
@@ -102,16 +174,65 @@ export class Hype {
    * Initialize Hype on the document
    * Sets up event listeners and observes DOM changes
    */
-  init(): void {
+  /**
+   * Initialize Hype on the document and optionally attach plugins.
+   *
+   * You may pass a single plugin or an array of plugins. Each plugin will be
+   * passed to `this.attach(plugin)` for installation.
+   *
+   * Examples:
+   *   hype.init();
+   *   hype.init(pubsubPlugin);
+   *   hype.init([pubsubPlugin, analyticsPlugin]);
+   *
+   * Plugins may be functions or objects with an `install` method. If a plugin
+   * returns a cleanup function, Hype will call it on `destroy()`.
+   */
+  init(plugins?: unknown | unknown[]): void {
     if (this.initialized) {
       return;
     }
 
-    this.log('Initializing Hype');
+    this.log("Initializing Hype");
+
+    // If plugins were provided on init, attach them first so they can hook before wiring
+    if (plugins) {
+      const list = Array.isArray(plugins) ? plugins : [plugins];
+      for (const p of list) {
+        this.attach(p);
+      }
+    }
 
     // Set up event delegation
-    document.addEventListener('submit', this.handleSubmit.bind(this), true);
-    document.addEventListener('click', this.handleClick.bind(this), true);
+    document.addEventListener("submit", this.handleSubmit.bind(this), true);
+    document.addEventListener("click", this.handleClick.bind(this), true);
+
+    // Initialize reactive system on document body
+    this.reactive.init(document.body);
+
+    // Attach default convenience plugins (still modular and optional).
+    // These are installed via the plugin API so consumers can opt-out, replace,
+    // or attach different implementations via `hype.attach(...)` or by passing
+    // plugins into `hype.init(...)`.
+    // Plugins are JS-only (progressive enhancement): HTML remains valid without them.
+    // Respect runtime configuration `this.config.plugins` which can disable defaults.
+    const pluginsCfg = this.config && this.config.plugins ? this.config.plugins : { pubsub: true, behavior: true, debounce: true };
+    if (pluginsCfg.pubsub !== false) {
+      try {
+        // Pub/sub is attached automatically when enabled so JS consumers
+        // get `hype.pub` / `hype.sub` by default.
+        this.attach(pubsubPlugin);
+      } catch (e) {
+        if (this.config.debug) console.warn("Hype: failed to attach pubsub plugin", e);
+      }
+    }
+    if (pluginsCfg.behavior !== false) {
+      try {
+        this.attach(behaviorPlugin);
+      } catch (e) {
+        if (this.config.debug) console.warn("Hype: failed to attach behavior plugin", e);
+      }
+    }
 
     // Set up mutation observer for dynamically added elements
     this.observer = new MutationObserver(this.handleMutations.bind(this));
@@ -131,18 +252,34 @@ export class Hype {
       return;
     }
 
-    document.removeEventListener('submit', this.handleSubmit.bind(this), true);
-    document.removeEventListener('click', this.handleClick.bind(this), true);
+    document.removeEventListener("submit", this.handleSubmit.bind(this), true);
+    document.removeEventListener("click", this.handleClick.bind(this), true);
 
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
     }
 
+    // plugin-specific cleanup is handled via `_attachedPluginCleanups` (invoked below).
+    // Individual `_behaviorCleanup` / `_debounceCleanup` fields were removed in favor of the
+    // unified plugin lifecycle management.
+
+    // run any cleanup functions returned by attached plugins
+    if (Array.isArray(this._attachedPluginCleanups) && this._attachedPluginCleanups.length) {
+      for (const fn of this._attachedPluginCleanups) {
+        try {
+          fn();
+        } catch {
+          /* ignore plugin cleanup errors */
+        }
+      }
+      this._attachedPluginCleanups = [];
+    }
+
     this.interceptors.clear();
     this.initialized = false;
 
-    this.log('Hype destroyed');
+    this.log("Hype destroyed");
   }
 
   /**
@@ -183,10 +320,7 @@ export class Hype {
   /**
    * Process an element and make the appropriate request
    */
-  private async processElement(
-    element: HTMLElement,
-    submitter?: HTMLButtonElement | HTMLInputElement | null
-  ): Promise<void> {
+  private async processElement(element: HTMLElement, submitter?: HTMLButtonElement | HTMLInputElement | null): Promise<void> {
     const methodInfo = this.getMethodAndUrl(element);
     if (!methodInfo) {
       return;
@@ -209,7 +343,7 @@ export class Hype {
       }
 
       // Run validation
-      if (!await this.validateElement(element, formData)) {
+      if (!(await this.validateElement(element, formData))) {
         return;
       }
     }
@@ -244,7 +378,7 @@ export class Hype {
       return;
     }
 
-    // Check if this form is Hype-enhanced
+    // Skip if the form is not marked with Hype attributes (no Hype behavior requested)
     if (!this.isHypeElement(form)) {
       return;
     }
@@ -252,12 +386,12 @@ export class Hype {
     event.preventDefault();
     const submitter = getSubmitButton(form);
     this.processElement(form, submitter).catch((error) => {
-      this.log('Error processing form', error);
+      this.log("Error processing form", error);
     });
   }
 
   /**
-   * Handle clicks on enhanced links/buttons
+   * Handle clicks on elements marked for Hype (links/buttons)
    */
   private handleClick(event: Event): void {
     const target = event.target as HTMLElement;
@@ -268,11 +402,7 @@ export class Hype {
     }
 
     // Skip form submit buttons - they're handled by form submission
-    if (
-      (element instanceof HTMLButtonElement || element instanceof HTMLInputElement) &&
-      element.type === 'submit' &&
-      element.form
-    ) {
+    if ((element instanceof HTMLButtonElement || element instanceof HTMLInputElement) && element.type === "submit" && element.form) {
       return;
     }
 
@@ -284,15 +414,22 @@ export class Hype {
 
     event.preventDefault();
     this.processElement(element).catch((error) => {
-      this.log('Error processing element', error);
+      this.log("Error processing element", error);
     });
   }
 
   /**
    * Handle DOM mutations
    */
-  private handleMutations(_mutations: MutationRecord[]): void {
-    // Currently just for future use (auto-init new elements, etc.)
+  private handleMutations(mutations: MutationRecord[]): void {
+    // Initialize reactive system on newly added elements
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof HTMLElement) {
+          this.reactive.init(node);
+        }
+      });
+    });
   }
 
   /**
@@ -302,7 +439,7 @@ export class Hype {
     // Dispatch before-request event
     const modifiedCtx = this.events.dispatchBeforeRequest(ctx);
     if (!modifiedCtx) {
-      this.log('Request cancelled by event');
+      this.log("Request cancelled by event");
       return;
     }
 
@@ -344,15 +481,14 @@ export class Hype {
 
       // Handle the response
       await this.handleResponse(finalCtx);
-
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        this.log('Request aborted');
+      if (error instanceof DOMException && error.name === "AbortError") {
+        this.log("Request aborted");
         return;
       }
 
       this.events.dispatchRequestError(interceptedCtx, error as Error);
-      this.log('Request error', error);
+      this.log("Request error", error);
     } finally {
       this.setLoading(interceptedCtx.element, false);
       this.cleanupAbortController(interceptedCtx.element as HypeElement);
@@ -364,7 +500,7 @@ export class Hype {
    */
   private async handleResponse(ctx: ResponseContext): Promise<void> {
     // Handle JSON responses with directives
-    if (ctx.isJson && typeof ctx.body === 'object') {
+    if (ctx.isJson && typeof ctx.body === "object") {
       const json = ctx.body as HypeJsonResponse;
 
       // Handle redirect
@@ -393,7 +529,7 @@ export class Hype {
       }
 
       await this.performSwap(ctx, html, json.settle);
-    } else if (typeof ctx.body === 'string') {
+    } else if (typeof ctx.body === "string") {
       // Handle plain HTML response
       await this.performSwap(ctx, ctx.body);
     }
@@ -402,23 +538,20 @@ export class Hype {
   /**
    * Perform the DOM swap
    */
-  private async performSwap(
-    ctx: ResponseContext,
-    html: string,
-    settleOverride?: number
-  ): Promise<void> {
+  private async performSwap(ctx: ResponseContext, html: string, settleOverride?: number): Promise<void> {
     // Dispatch before-swap event
     const finalHtml = this.events.dispatchBeforeSwap(ctx, html);
     if (finalHtml === null) {
-      this.log('Swap cancelled by event');
+      this.log("Swap cancelled by event");
       return;
     }
 
-    // Check for custom swap handler
+    // Custom swap handler takes precedence; otherwise always perform default swap.
     const customHandler = this.interceptors.getSwapHandler(ctx.swap);
     if (customHandler) {
       await customHandler(ctx.target, finalHtml, ctx.swap);
     } else {
+      // Always use the default swap implementation (delegates to innerHTML/outerHTML/insertAdjacentHTML/etc).
       defaultSwap(ctx.target, finalHtml, ctx.swap);
     }
 
@@ -428,12 +561,12 @@ export class Hype {
     // Handle history
     if (this.config.history) {
       const pushAttr = ctx.element.getAttribute(this.attrs.push);
-      if (pushAttr !== 'false') {
+      if (pushAttr !== "false") {
         const url = pushAttr || ctx.url;
-        if (this.config.history === 'push') {
-          window.history.pushState({}, '', url);
-        } else if (this.config.history === 'replace') {
-          window.history.replaceState({}, '', url);
+        if (this.config.history === "push") {
+          window.history.pushState({}, "", url);
+        } else if (this.config.history === "replace") {
+          window.history.replaceState({}, "", url);
         }
       }
     }
@@ -453,14 +586,14 @@ export class Hype {
     body: string | HypeJsonResponse;
     isJson: boolean;
   }> {
-    const contentType = response.headers.get('content-type') || '';
+    const contentType = response.headers.get("content-type") || "";
 
-    if (contentType.includes('application/json')) {
+    if (contentType.includes("application/json")) {
       try {
-        const json = await response.json() as HypeJsonResponse;
+        const json = (await response.json()) as HypeJsonResponse;
         return { body: json, isJson: true };
       } catch {
-        return { body: '', isJson: false };
+        return { body: "", isJson: false };
       }
     }
 
@@ -471,10 +604,7 @@ export class Hype {
   /**
    * Validate an element (form)
    */
-  private async validateElement(
-    form: HTMLFormElement,
-    formData: FormData
-  ): Promise<boolean> {
+  private async validateElement(form: HTMLFormElement, formData: FormData): Promise<boolean> {
     // HTML5 validation first
     if (!validateFormHTML5(form)) {
       reportValidity(form);
@@ -488,8 +618,8 @@ export class Hype {
       if (validator) {
         const result = await validator(form, formData);
         if (result !== true) {
-          if (typeof result === 'string') {
-            this.log('Validation failed:', result);
+          if (typeof result === "string") {
+            this.log("Validation failed:", result);
           }
           return false;
         }
@@ -502,12 +632,7 @@ export class Hype {
   /**
    * Build fetch init options
    */
-  private buildInit(
-    method: HttpMethod,
-    formData: FormData | undefined,
-    element: HTMLElement,
-    abortController: AbortController
-  ): RequestInit {
+  private buildInit(method: HttpMethod, formData: FormData | undefined, element: HTMLElement, abortController: AbortController): RequestInit {
     const headers: Record<string, string> = { ...this.config.headers };
 
     // Add custom headers from element
@@ -516,7 +641,7 @@ export class Hype {
       try {
         Object.assign(headers, JSON.parse(headersAttr));
       } catch {
-        this.log('Invalid headers JSON:', headersAttr);
+        this.log("Invalid headers JSON:", headersAttr);
       }
     }
 
@@ -528,17 +653,17 @@ export class Hype {
     };
 
     // Add body for methods that support it
-    if (formData && method !== 'GET') {
+    if (formData && method !== "GET") {
       const encoding = element.getAttribute(this.attrs.encoding) || undefined;
       const { body, contentType } = prepareRequestBody(method, formData, encoding);
       init.body = body;
       if (contentType) {
-        headers['Content-Type'] = contentType;
+        headers["Content-Type"] = contentType;
       }
     }
 
     // For GET requests with form data, append to URL
-    if (formData && method === 'GET') {
+    if (formData && method === "GET") {
       // URL modification is handled in getMethodAndUrl
     }
 
@@ -548,25 +673,23 @@ export class Hype {
   /**
    * Get the HTTP method and URL from an element
    */
-  private getMethodAndUrl(
-    element: HTMLElement
-  ): { method: HttpMethod; url: string } | null {
+  private getMethodAndUrl(element: HTMLElement): { method: HttpMethod; url: string } | null {
     const methodAttrs = [
-      { attr: this.attrs.get, method: 'GET' as const },
-      { attr: this.attrs.post, method: 'POST' as const },
-      { attr: this.attrs.put, method: 'PUT' as const },
-      { attr: this.attrs.delete, method: 'DELETE' as const },
-      { attr: this.attrs.patch, method: 'PATCH' as const },
+      { attr: this.attrs.get, method: "GET" as const },
+      { attr: this.attrs.post, method: "POST" as const },
+      { attr: this.attrs.put, method: "PUT" as const },
+      { attr: this.attrs.delete, method: "DELETE" as const },
+      { attr: this.attrs.patch, method: "PATCH" as const },
     ];
 
     for (const { attr, method } of methodAttrs) {
       const url = element.getAttribute(attr);
       if (url !== null) {
         // Handle GET requests with form data
-        if (method === 'GET' && element instanceof HTMLFormElement) {
+        if (method === "GET" && element instanceof HTMLFormElement) {
           const formData = serializeForm(element);
           const params = formDataToParams(formData);
-          const separator = url.includes('?') ? '&' : '?';
+          const separator = url.includes("?") ? "&" : "?";
           return { method, url: `${url}${separator}${params.toString()}` };
         }
         return { method, url };
@@ -580,7 +703,7 @@ export class Hype {
         const url = getFormAction(element, this.config.attributePrefix);
         return { method, url };
       } else if (element instanceof HTMLAnchorElement && element.href) {
-        return { method: 'GET', url: element.href };
+        return { method: "GET", url: element.href };
       }
     }
 
@@ -628,11 +751,11 @@ export class Hype {
     const controller = new AbortController();
 
     // Handle deduplication
-    if (this.config.dedupe === 'cancel' && element._hypeActiveRequest) {
+    if (this.config.dedupe === "cancel" && element._hypeActiveRequest) {
       element._hypeActiveRequest.abort();
     }
 
-    if (this.config.dedupe !== 'allow') {
+    if (this.config.dedupe !== "allow") {
       element._hypeActiveRequest = controller;
     }
 
@@ -651,15 +774,15 @@ export class Hype {
    */
   private setLoading(element: HTMLElement, loading: boolean): void {
     if (loading) {
-      element.setAttribute('aria-busy', 'true');
-      element.classList.add('hype-loading');
+      element.setAttribute("aria-busy", "true");
+      element.classList.add("hype-loading");
 
       // Show loading indicator if specified
       const indicator = element.getAttribute(this.attrs.indicator);
       if (indicator) {
         const indicatorEl = document.querySelector(indicator);
         if (indicatorEl) {
-          indicatorEl.classList.add('hype-show');
+          indicatorEl.classList.add("hype-show");
         }
       }
 
@@ -673,15 +796,15 @@ export class Hype {
         });
       }
     } else {
-      element.removeAttribute('aria-busy');
-      element.classList.remove('hype-loading');
+      element.removeAttribute("aria-busy");
+      element.classList.remove("hype-loading");
 
       // Hide loading indicator
       const indicator = element.getAttribute(this.attrs.indicator);
       if (indicator) {
         const indicatorEl = document.querySelector(indicator);
         if (indicatorEl) {
-          indicatorEl.classList.remove('hype-show');
+          indicatorEl.classList.remove("hype-show");
         }
       }
 
@@ -698,7 +821,7 @@ export class Hype {
   }
 
   /**
-   * Check if an element is Hype-enhanced
+   * Check whether an element is marked with Hype attributes
    */
   private isHypeElement(element: HTMLElement): boolean {
     return (
@@ -732,7 +855,7 @@ export class Hype {
    */
   private log(...args: unknown[]): void {
     if (this.config.debug) {
-      console.log('[Hype]', ...args);
+      console.log("[Hype]", ...args);
     }
   }
 

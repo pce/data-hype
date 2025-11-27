@@ -1,0 +1,126 @@
+# Docker Compose configuration for Hype build workflow
+# Usage:
+#   docker-compose up build      # Build the project
+#   docker-compose run --rm test # Run tests
+#   docker-compose run --rm dev  # Start dev mode
+
+services:
+  # Build service - builds the dist artifacts
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./dist:/app/dist
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+    command: pnpm run build
+
+  # Dev service - watch mode for development
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./dist:/app/dist
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+    command: pnpm run dev
+    stdin_open: true
+    tty: true
+
+  # Test service - run test suite
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./coverage:/app/coverage
+    command: pnpm test
+
+  # Test with coverage
+  test-coverage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./coverage:/app/coverage
+    command: pnpm run test:coverage
+
+  # Docs service - generate JSDoc documentation
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./docs-output:/app/docs-output
+      - ./src:/app/src:ro
+    command: pnpm run docs
+
+  # Backend service - local dev server for playground (WebSocket + snapshot endpoints)
+  # Development mode: mount the dev-server source and public examples from the host
+  # so edits to HTML/TS are visible immediately without rebuilding the image.
+  backend:
+    build:
+      context: ./playground/dev-server
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the dev-server source so ts-node-dev (dev script) can watch & restart on changes.
+      - ./playground/dev-server:/usr/src/app:cached
+      # Mount public examples separately to ensure live edits to HTML are visible.
+      - ./playground/dev-server/public:/usr/src/app/public:cached
+      # Mount the built library artifacts so the backend can serve the compiled `dist` output
+      # from the repo at /public/dist without adding a separate service.
+      - ./dist:/usr/src/app/public/static/js:ro
+      # Read-only repository snapshot for debugging/logging if needed
+      - ./:/usr/src/app/project:ro
+    working_dir: /usr/src/app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - CI=true
+    # Install dependencies, build TypeScript to `dist/` and run the compiled JS.
+    # Avoid using ts-node-dev here (it triggers ESM import errors in some environments).
+    # The compiled server is started via `node dist/server.js` (package script `start`).
+    # If you prefer to run a watch/build process inside a container, use the separate
+    # `backend-dev` service which runs `pnpm run dev` and writes output to ./dist.
+    command: sh -c "pnpm install --no-frozen-lockfile && pnpm run build && pnpm run start"
+    stdin_open: true
+    tty: true
+
+  # Backend-dev service - watch/build the root repo and produce ./dist (mounted into backend as static/js)
+  # This service runs the repo watch/build inside a container so the backend can serve built artifacts
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the repository so the container can run the watch/build and output to ./dist
+      - ./:/app:cached
+      # Expose the build output back to the host ./dist so backend can mount it as static/js
+      - ./dist:/app/dist
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - CI=true
+    # Install pnpm and run the repo dev watch script which outputs to ./dist
+    # The container installs necessary build tools at runtime to keep the image simple.
+    command: sh -c "apk add --no-cache git python3 make g++ && npm install -g pnpm@latest && pnpm install --no-frozen-lockfile && pnpm run dev"
+    stdin_open: true
+    tty: true
+
+  # Shell service - interactive shell for debugging
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    command: /bin/sh
+    stdin_open: true
+    tty: true

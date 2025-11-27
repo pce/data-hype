@@ -1,0 +1,71 @@
+{
+  "source": {
+    "include": ["src"],
+    "includePattern": ".+\\.ts$",
+    "excludePattern": "(node_modules|dist)"
+  },
+  "opts": {
+    "template": "node_modules/docdash",
+    "encoding": "utf8",
+    "destination": "docs-output",
+    "recurse": true,
+    "verbose": true,
+    "tutorials": ".",
+    "readme": "README.md"
+  },
+  "plugins": [
+    "plugins/markdown"
+  ],
+  "markdown": {
+    "hardwrap": false,
+    "idInHeadings": true
+  },
+  "docdash": {
+    "static": true,
+    "sort": true,
+    "sectionOrder": [
+      "Classes",
+      "Modules",
+      "Externals",
+      "Events",
+      "Namespaces",
+      "Mixins",
+      "Tutorials",
+      "Interfaces"
+    ],
+    "search": true,
+    "collapse": false,
+    "typedefs": true,
+    "removeQuotes": "none",
+    "scripts": [
+      "custom-theme.js"
+    ],
+    "menu": {
+      "GitHub": {
+        "href": "https://github.com/pce/hype",
+        "target": "_blank",
+        "class": "menu-item",
+        "id": "github-link"
+      },
+      "NPM": {
+        "href": "https://www.npmjs.com/package/hype",
+        "target": "_blank",
+        "class": "menu-item",
+        "id": "npm-link"
+      }
+    },
+    "meta": {
+      "title": "Hype Documentation",
+      "description": "Progressive enhancement library for modern web development",
+      "keyword": "progressive-enhancement, fetch, htmx, alpine, reactive"
+    }
+  },
+  "templates": {
+    "cleverLinks": true,
+    "monospaceLinks": true,
+    "default": {
+      "outputSourceFiles": true,
+      "includeDate": false
+    }
+  }
+}

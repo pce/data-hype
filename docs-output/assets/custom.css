@@ -1,0 +1,376 @@
+/**
+ * Custom TypeDoc Theme with Auto/Light/Dark Mode
+ * Provides a modern, professional theme with automatic dark mode detection
+ */
+
+:root {
+  --color-background: #ffffff;
+  --color-background-secondary: #f8f9fa;
+  --color-background-warning: #fff4e6;
+  --color-text: #1f2937;
+  --color-text-aside: #6b7280;
+  --color-link: #3b82f6;
+  --color-link-hover: #2563eb;
+  --color-ts: #3178c6;
+  --color-ts-interface: #10b981;
+  --color-ts-class: #f59e0b;
+  --color-ts-function: #8b5cf6;
+  --color-border: #e5e7eb;
+  --color-code-background: #f3f4f6;
+  --color-accent: #3b82f6;
+  --color-shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode colors */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #1a1a1a;
+    --color-background-secondary: #2d2d2d;
+    --color-background-warning: #3a2f1f;
+    --color-text: #e5e7eb;
+    --color-text-aside: #9ca3af;
+    --color-link: #60a5fa;
+    --color-link-hover: #93c5fd;
+    --color-ts: #5eaad7;
+    --color-ts-interface: #34d399;
+    --color-ts-class: #fbbf24;
+    --color-ts-function: #a78bfa;
+    --color-border: #374151;
+    --color-code-background: #374151;
+    --color-accent: #60a5fa;
+    --color-shadow: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Force light mode when explicitly set */
+[data-theme="light"] {
+  --color-background: #ffffff;
+  --color-background-secondary: #f8f9fa;
+  --color-background-warning: #fff4e6;
+  --color-text: #1f2937;
+  --color-text-aside: #6b7280;
+  --color-link: #3b82f6;
+  --color-link-hover: #2563eb;
+  --color-ts: #3178c6;
+  --color-ts-interface: #10b981;
+  --color-ts-class: #f59e0b;
+  --color-ts-function: #8b5cf6;
+  --color-border: #e5e7eb;
+  --color-code-background: #f3f4f6;
+  --color-accent: #3b82f6;
+  --color-shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* Force dark mode when explicitly set */
+[data-theme="dark"] {
+  --color-background: #1a1a1a;
+  --color-background-secondary: #2d2d2d;
+  --color-background-warning: #3a2f1f;
+  --color-text: #e5e7eb;
+  --color-text-aside: #9ca3af;
+  --color-link: #60a5fa;
+  --color-link-hover: #93c5fd;
+  --color-ts: #5eaad7;
+  --color-ts-interface: #34d399;
+  --color-ts-class: #fbbf24;
+  --color-ts-function: #a78bfa;
+  --color-border: #374151;
+  --color-code-background: #374151;
+  --color-accent: #60a5fa;
+  --color-shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+/* Base styles */
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+/* Header */
+.tsd-page-toolbar {
+  background-color: var(--color-background-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Sidebar */
+.col-menu {
+  background-color: var(--color-background-secondary);
+}
+
+.tsd-navigation a {
+  color: var(--color-text);
+}
+
+.tsd-navigation a:hover {
+  color: var(--color-link);
+}
+
+.tsd-navigation .current {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* Main content */
+.col-content {
+  background-color: var(--color-background);
+}
+
+/* Links */
+a {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+/* Code blocks */
+code,
+pre {
+  background-color: var(--color-code-background);
+  color: var(--color-text);
+  border-radius: 4px;
+}
+
+pre {
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+}
+
+code {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9em;
+}
+
+/* Signatures */
+.tsd-signature {
+  background-color: var(--color-code-background);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1rem;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+/* Type badges */
+.tsd-kind-icon {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.tsd-kind-class .tsd-kind-icon {
+  background-color: var(--color-ts-class);
+  color: white;
+}
+
+.tsd-kind-interface .tsd-kind-icon {
+  background-color: var(--color-ts-interface);
+  color: white;
+}
+
+.tsd-kind-function .tsd-kind-icon {
+  background-color: var(--color-ts-function);
+  color: white;
+}
+
+/* Panels */
+.tsd-panel {
+  background-color: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+}
+
+.tsd-panel-group {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+/* Comments */
+.tsd-comment {
+  color: var(--color-text-aside);
+}
+
+/* Parameters table */
+.tsd-parameters {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.tsd-parameters td,
+.tsd-parameters th {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem;
+}
+
+.tsd-parameters th {
+  background-color: var(--color-background-secondary);
+  font-weight: 600;
+}
+
+/* Index */
+.tsd-index-content {
+  background-color: var(--color-background-secondary);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+/* Hierarchy */
+.tsd-hierarchy {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1rem;
+  margin-left: 0.5rem;
+}
+
+/* Search */
+.tsd-search input {
+  background-color: var(--color-background);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+}
+
+.tsd-search input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Warnings */
+.tsd-warning {
+  background-color: var(--color-background-warning);
+  border-left: 4px solid #f59e0b;
+  padding: 1rem;
+  border-radius: 4px;
+}
+
+/* Breadcrumbs */
+.tsd-breadcrumb {
+  color: var(--color-text-aside);
+}
+
+.tsd-breadcrumb a {
+  color: var(--color-text-aside);
+}
+
+.tsd-breadcrumb a:hover {
+  color: var(--color-link);
+}
+
+/* Footer */
+.tsd-generator {
+  background-color: var(--color-background-secondary);
+  border-top: 1px solid var(--color-border);
+  padding: 2rem 0;
+  margin-top: 4rem;
+}
+
+/* Shadows */
+.tsd-panel,
+.tsd-signature,
+pre {
+  box-shadow: 0 1px 3px var(--color-shadow);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .col-menu {
+    background-color: var(--color-background);
+  }
+
+  .tsd-navigation {
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+/* Scrollbar styling (WebKit browsers) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-aside);
+}
+
+/* Print styles */
+@media print {
+  .tsd-page-toolbar,
+  .col-menu,
+  .tsd-generator {
+    display: none;
+  }
+
+  .col-content {
+    margin: 0;
+  }
+}
+
+/* Improved spacing */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+h1 {
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+/* Better list styling */
+ul.tsd-descriptions,
+ul.tsd-parameters {
+  list-style: none;
+  padding-left: 0;
+}
+
+ul.tsd-descriptions > li,
+ul.tsd-parameters > li {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+ul.tsd-descriptions > li:last-child,
+ul.tsd-parameters > li:last-child {
+  border-bottom: none;
+}
+
+/* Accessibility improvements */
+a:focus,
+button:focus,
+input:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Professional typography */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+}
+
+code, pre {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+}

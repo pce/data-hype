@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hype Reactive Examples</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Hype will be loaded as an ES module at the end of the document -->
+  <style>
+    [data-hype-show] {
+      transition: opacity 0.2s;
+    }
+    .hype-loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    /* counter value will be written to the element's textContent by JS; no ::after-based rendering */
+  </style>
+</head>
+<body class="bg-gray-50 p-8">
+  <div class="max-w-4xl mx-auto space-y-12">
+    <header class="text-center mb-12">
+      <h1 class="text-4xl font-bold text-gray-900 mb-2">Hype Reactive Examples</h1>
+      <p class="text-gray-600">reactive state for Hype</p>
+    </header>
+
+    <!-- Example: Counter -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">Counter</h2>
+      <p class="text-gray-600 mb-4">Simple counter with increment/decrement.</p>
+
+      <div data-hype-state='{ "count": 0 }' class="space-y-4">
+        <div class="flex items-center gap-4">
+          <button
+            data-hype-on-click='["set","count",["-",["get","count"],1]]'
+            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            -
+          </button>
+
+          <div class="text-4xl font-bold min-w-[100px] text-center">
+            <!-- bind the numeric value into a data-count attribute and render via CSS ::after -->
+            <span class="counter-value" data-hype-bind-data-count="count"></span>
+          </div>
+
+          <button
+            data-hype-on-click='["set","count",["+",["get","count"],1]]'
+            class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            +
+          </button>
+        </div>
+
+        <div class="text-sm text-gray-600">
+          <p data-hype-show='["===", ["get", "count"], 0]'>Counter is at zero</p>
+          <p data-hype-show='[">", ["get", "count"], 0]' class="text-green-600">Count is positive: <span class="counter-value" data-hype-bind-data-count="count"></span></p>
+          <p data-hype-show='["<", ["get", "count"], 0]' class="text-red-600">Count is negative: <span class="counter-value" data-hype-bind-data-count="count"></span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Documentation -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">Available Directives</h2>
+
+      <div class="space-y-4">
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-state</h3>
+          <p class="text-gray-600">Declares reactive state for the component. Must be valid JSON or JavaScript object notation.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-state='{ "open": false, "count": 0 }'</code>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-on-{event}</h3>
+          <p class="text-gray-600">Handles events with access to state and helpers. For safety and CSP-friendly usage prefer the DSL JSON form (no eval/new Function). Examples: <code>["toggle","open"]</code> or <code>["set","count",["+",["get","count"],1]]</code>.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-on-click='["toggle","open"]'</code>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-show</h3>
+          <p class="text-gray-600">Shows/hides elements based on expression evaluation.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-show='[">", ["get", "count"], 0]'</code>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-class-{className}</h3>
+          <p class="text-gray-600">Conditionally applies CSS classes based on expression.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-class-text-red-500="isActive"</code>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-bind-{attribute}</h3>
+          <p class="text-gray-600">Binds attribute values to state expressions.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-bind-disabled="loading"</code>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Robust module import and debug logging -->
+  <script type="module">
+    (async function () {
+      try {
+        console.log('Loading /static/js/hype.js ...');
+        const mod = await import('/static/js/hype.js');
+        // Try several common export shapes to find createHype
+        const createHype = mod.createHype || (mod.default && mod.default.createHype) || mod.default || null;
+        if (!createHype) {
+          console.error('Could not find createHype export in /static/js/hype.js', mod);
+          return;
+        }
+
+        // Enable debug so internal systems log helpful info
+        const cfg = { debug: true };
+        console.log('Creating Hype with config', cfg);
+        const hype = typeof createHype === 'function' ? createHype(cfg) : (createHype instanceof Object ? createHype : null);
+        if (!hype) {
+          console.error('createHype did not return an instance', createHype);
+          return;
+        }
+
+        // Initialize Hype and print diagnostics
+        hype.init();
+        // Force initial watcher notification and add a context-level watcher to update bound elements.
+        // This ensures show/bind watchers run and that UI elements are kept in sync with the reactive state.
+        try {
+          const stateEl = document.querySelector('[data-hype-state]');
+          if (stateEl && hype.reactive) {
+            // Flush any microtask-scheduled notifications synchronously for the component root if available
+            if (typeof hype.reactive.flushPendingNow === 'function') {
+              try { hype.reactive.flushPendingNow(stateEl); } catch (e) { console.warn('flushPendingNow failed', e); }
+            }
+            // As a fallback, invoke notifyWatchers directly to run watchers immediately
+            if (typeof hype.reactive.notifyWatchers === 'function') {
+              try { hype.reactive.notifyWatchers(stateEl); } catch (e) { console.warn('notifyWatchers failed', e); }
+            }
+            // Create a context-level watcher to mirror reactive state into bound elements.
+            // We use findContext to obtain the internal context and add a watcher function to its watchers set.
+            try {
+              const ctx = typeof hype.reactive.findContext === 'function' ? hype.reactive.findContext(stateEl) : null;
+              if (ctx && ctx.watchers && typeof ctx.watchers.add === 'function') {
+                const updateBoundElements = () => {
+                  try {
+                    const snapshot = hype.reactive.getState(stateEl) || {};
+                    const value = snapshot.count;
+                    document.querySelectorAll('[data-hype-bind-data-count]').forEach(el => {
+                      try {
+                        // Keep attribute and visible text in sync
+                        el.setAttribute('data-count', value === undefined || value === null ? '' : String(value));
+                        el.textContent = value === undefined || value === null ? '' : String(value);
+                      } catch (_e) {}
+                    });
+                  } catch (_err) {}
+                };
+                // Register watcher and run once immediately
+                try {
+                  ctx.watchers.add(updateBoundElements);
+                } catch (_e) {}
+                updateBoundElements();
+              } else {
+                // If we cannot access internal context, do one-off initialization
+                try {
+                  const snapshot = hype.reactive.getState(stateEl) || {};
+                  document.querySelectorAll('[data-hype-bind-data-count]').forEach(el => {
+                    try {
+                      el.setAttribute('data-count', snapshot.count === undefined || snapshot.count === null ? '' : String(snapshot.count));
+                      el.textContent = snapshot.count === undefined || snapshot.count === null ? '' : String(snapshot.count);
+                    } catch (_e) {}
+                  });
+                } catch (_e) {}
+              }
+            } catch (e) {
+              console.warn('Failed to attach context watcher or update bound elements', e);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to flush reactive watchers', e);
+        }
+        console.log('Hype initialized. Hype config:', hype.getConfig ? hype.getConfig() : null);
+        try {
+          console.log('Reactive config/state snapshot:', hype.reactive?.getConfig ? hype.reactive.getConfig() : hype.reactive);
+        } catch (e) {
+          console.warn('Could not read reactive.getConfig()', e);
+        }
+        // Register a safe swap handler that uses textContent (innerText) instead of innerHTML,
+        // and set it as the default swap for this page. This avoids injecting HTML.
+        try {
+          if (typeof hype.registerSwap === 'function') {
+            hype.registerSwap('innerText', (target, html) => {
+              try { target.textContent = html; } catch { target.innerText = html; }
+            });
+            if (typeof hype.configure === 'function') {
+              hype.configure({ defaultSwap: 'innerText' });
+              console.log('Configured Hype defaultSwap to innerText');
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to register innerText swap', e);
+        }
+        // Helper: when Hype binds attributes like data-count via data-hype-bind-data-count,
+        // mirror the attribute into element textContent for visible UI.
+        const selector = '[data-hype-bind-data-count]';
+        const moMap = new WeakMap();
+        function handleAttrChange(el) {
+          const attrName = 'data-count';
+          const val = el.getAttribute(attrName);
+          el.textContent = val ?? '';
+        }
+        function observeEl(el) {
+          handleAttrChange(el);
+          if (moMap.has(el)) return;
+          const mo = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+              if (m.type === 'attributes') {
+                handleAttrChange(m.target);
+              }
+            }
+          });
+          mo.observe(el, { attributes: true });
+          moMap.set(el, mo);
+        }
+        document.querySelectorAll(selector).forEach(observeEl);
+        const bodyObserver = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            for (const node of Array.from(m.addedNodes)) {
+              if (!(node instanceof HTMLElement)) continue;
+              if (node.matches?.(selector)) observeEl(node);
+              node.querySelectorAll?.(selector).forEach(observeEl);
+            }
+          }
+        });
+        bodyObserver.observe(document.body, { childList: true, subtree: true });
+
+
+      } catch (err) {
+        console.error('Failed to load or initialize Hype:', err);
+      }
+    })();
+  </script>
+</body>
+</html>

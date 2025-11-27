@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Live Stocks — WebSocket Example</title>
+  <meta name="description" content="Stocks ticker demo using WebSockets. Minimal inline JS; Hype runtime is loaded synchronously from /static/js/hype.js." />
+  <script src="https://cdn.tailwindcss.com" defer></script>
+
+  <!-- Synchronously include built Hype runtime so the page is deterministic and minimal.
+       The dev workflow should ensure /static/js/hype.js is present (see dev.sh). -->
+  <script src="/static/js/hype.js"></script>
+
+  <style>
+    :root{
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --muted:#64748b;
+      --accent:#0366d6;
+      --up:#059669;
+      --down:#ef4444;
+      --radius:10px;
+    }
+
+    html,body{
+      height:100%;
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background:var(--bg);
+      color:#0f172a;
+    }
+
+    .container{max-width:960px;margin:28px auto;padding:0 16px}
+    .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:0 1px 2px rgba(2,6,23,0.06);margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace}
+    .price-up{color:var(--up);font-weight:600}
+    .price-down{color:var(--down);font-weight:600}
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .badge{padding:6px 10px;border-radius:8px;background:rgba(3,102,214,0.06);color:var(--accent);text-decoration:none;font-weight:600}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left}
+    th{font-weight:700;color:#0f172a}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
+    .dot.online{background:var(--up)}
+    .dot.offline{background:var(--down)}
+    .small{font-size:0.9rem}
+    @media (max-width:640px){.controls{flex-direction:column;align-items:stretch}th,td{padding:8px}}
+  </style>
+</head>
+<body>
+  <main class="container" role="main" aria-labelledby="page-title">
+    <header class="card" role="banner" aria-label="WebSocket stocks header">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <h1 id="page-title" style="</div>margin:0;font-size:1.25rem;">Live Stocks — WebSocket Example</h1>
+          <p class="muted small" style="margin-top:6px;">Connects to a WebSocket endpoint at <code class="mono">/stocks/ws</code>. Includes a local simulate mode.</p>
+        </div>
+
+        <div class="controls" aria-hidden="false">
+          <div style="display:flex;align-items:center;">
+            <span id="conn-dot" class="dot offline" aria-hidden="true"></span>
+            <span id="conn-text" class="muted mono">disconnected</span>
+          </div>
+
+          <button id="connectBtn" class="mono small" style="background:var(--accent);color:#fff;padding:8px 10px;border-radius:8px;border:0;">Connect</button>
+          <button id="disconnectBtn" class="mono small" style="background:#e6eef6;color:var(--accent);padding:8px 10px;border-radius:8px;border:0;display:none;">Disconnect</button>
+          <a class="badge" href="/sse.html" style="margin-left:8px;">SSE example</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="ws-info">
+      <h2 id="ws-info" style="margin:0 0 8px 0;">Ticker (WebSocket)</h2>
+      <p class="muted" style="margin:0 0 12px 0;">Expected messages: <span class="mono">{ "type": "snapshot", "items": [...] }</span> or <span class="mono">{ "type": "update", "symbol": "AAPL", "price": 123.45, "change": -0.67 }</span>.</p>
+
+      <div style="overflow:auto;">
+        <table aria-live="polite" role="table" aria-describedby="ws-info">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Price</th>
+              <th>Change</th>
+              <th class="muted">Last</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <label for="simulate" class="muted mono" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="simulate" aria-label="Simulate updates" /> Simulate updates locally
+        </label>
+
+        <label for="symbol" class="muted mono" style="margin-left:8px;">Subscribe:</label>
+        <input id="symbol" class="mono" placeholder="e.g. AAPL" style="padding:8px;border-radius:6px;border:1px solid #e6eef6;" aria-label="Subscribe symbol" />
+        <button id="addSymbol" class="mono" style="padding:8px;border-radius:6px;border:1px solid #d1d5db;">Add</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="hints">
+      <h3 id="hints" style="margin:0 0 8px 0;">Developer notes</h3>
+      <ul class="muted" style="margin:0;padding-left:18px;">
+        <li>The backend dev server provides <code class="mono">/stocks/ws</code> and <code class="mono">/stocks/sse</code>.</li>
+        <li>This page loads the compiled Hype runtime at <code class="mono">/static/js/hype.js</code> and initializes it on load.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    // Initialize Hype runtime synchronously for deterministic behavior.
+    if (window.hype && typeof window.hype.init === 'function') {
+      try { window.hype.init(); } catch (e) { console.warn('hype.init() error', e); }
+    } else {
+      console.warn('Hype runtime not present at /static/js/hype.js — some integrations may be disabled.');
+    }
+
+    (function () {
+      // Elements
+      const connDot = document.getElementById('conn-dot');
+      const connText = document.getElementById('conn-text');
+      const connectBtn = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      const rows = document.getElementById('rows');
+      const simulateCheckbox = document.getElementById('simulate');
+      const addSymbolBtn = document.getElementById('addSymbol');
+      const symbolInput = document.getElementById('symbol');
+
+      // State
+      let ws = null;
+      let simulateTimer = null;
+      const subscribed = new Set(['AAPL','GOOG','MSFT']);
+      const fmt = p => (typeof p === 'number' ? p.toFixed(2) : '—');
+
+      function setConnected(v) {
+        if (v) {
+          connDot.classList.remove('offline'); connDot.classList.add('online');
+          connText.textContent = 'connected';
+          connectBtn.style.display = 'none';
+          disconnectBtn.style.display = '';
+        } else {
+          connDot.classList.remove('online'); connDot.classList.add('offline');
+          connText.textContent = 'disconnected';
+          connectBtn.style.display = '';
+          disconnectBtn.style.display = 'none';
+        }
+      }
+
+      // Render a row safely via DOM APIs
+      function renderRow(symbol, price, change, ts) {
+        if (!symbol) return;
+        const key = String(symbol).toUpperCase();
+        const id = 'row-' + key;
+        let tr = document.getElementById(id);
+        const changeClass = (typeof change === 'number') ? ((change > 0) ? 'price-up' : (change < 0) ? 'price-down' : '') : '';
+        const priceStr = (price != null) ? fmt(price) : '—';
+        const changeStr = (change != null) ? ((change > 0 ? '+' : '') + change.toFixed(2)) : '—';
+        const lastStr = ts ? new Date(ts).toLocaleTimeString() : '';
+
+        if (!tr) {
+          tr = document.createElement('tr'); tr.id = id;
+          const tdSym = document.createElement('td'); tdSym.className = 'mono'; const strong = document.createElement('strong'); strong.textContent = key; tdSym.appendChild(strong);
+          const tdPrice = document.createElement('td'); tdPrice.className = 'mono price'; tdPrice.textContent = priceStr;
+          const tdChange = document.createElement('td'); tdChange.className = 'mono change ' + (changeClass || ''); tdChange.textContent = changeStr;
+          const tdLast = document.createElement('td'); tdLast.className = 'muted mono'; tdLast.textContent = lastStr;
+          tr.appendChild(tdSym); tr.appendChild(tdPrice); tr.appendChild(tdChange); tr.appendChild(tdLast);
+          rows.appendChild(tr);
+        } else {
+          const priceEl = tr.querySelector('.price'); if (priceEl) priceEl.textContent = priceStr;
+          const changeEl = tr.querySelector('.change'); if (changeEl) { changeEl.classList.remove('price-up','price-down'); if (changeClass) changeEl.classList.add(changeClass); changeEl.textContent = changeStr; }
+          const lastEl = tr.querySelector('.muted'); if (lastEl) lastEl.textContent = lastStr;
+        }
+      }
+
+      function handlePayload(obj) {
+        if (!obj) return;
+        if (Array.isArray(obj)) { obj.forEach(o => handlePayload(o)); return; }
+        if (obj.type === 'snapshot' && Array.isArray(obj.items)) {
+          obj.items.forEach(it => { if (it && it.symbol) renderRow(it.symbol, it.price, it.change, it.timestamp || Date.now()); });
+        } else if (obj.type === 'update' && obj.symbol) {
+          renderRow(obj.symbol, obj.price, obj.change, obj.timestamp || Date.now());
+        } else if (obj.symbol) {
+          renderRow(obj.symbol, obj.price, obj.change, obj.timestamp || Date.now());
+        }
+      }
+
+      // Accepts text or object
+      function handleMessageText(text) {
+        if (!text) return;
+        let d;
+        try { d = JSON.parse(text); } catch (e) { console.warn('invalid JSON', text); return; }
+        handlePayload(d);
+      }
+
+      // WebSocket connect/disconnect
+      function connectWS() {
+        disconnectWS();
+        try {
+          const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+          ws = new WebSocket(proto + location.host + '/stocks/ws');
+        } catch (e) {
+          console.error('WebSocket connect error', e); setConnected(false); return;
+        }
+        ws.addEventListener('open', () => setConnected(true));
+        ws.addEventListener('message', ev => handleMessageText(ev.data));
+        ws.addEventListener('close', () => setConnected(false));
+        ws.addEventListener('error', () => setConnected(false));
+      }
+
+      function disconnectWS() { if (ws) { try { ws.close(); } catch (_) {} ws = null; } setConnected(false); }
+
+      // Simulate updates locally
+      function startSimulate() {
+        stopSimulate();
+        Array.from(subscribed).forEach(sym => renderRow(sym, (100 + Math.random() * 150), 0, Date.now()));
+        simulateTimer = setInterval(() => {
+          const syms = Array.from(subscribed); if (!syms.length) return;
+          const symbol = syms[Math.floor(Math.random()*syms.length)];
+          const row =
+ document.getElementById('row-' + String(symbol).toUpperCase());
+          const prev = row ? parseFloat((row.querySelector('.price') && row.querySelector('.price').textContent) || '100') : (100 + Math.random()*50);
+          const change = Math.round(((Math.random()-0.5)*2) * 100) / 100;
+          const price = Math.max(0.01, Math.round((prev + change) * 100) / 100);
+          handlePayload({ type: 'update', symbol, price, change, timestamp: Date.now() });
+        }, 700);
+        setConnected(true);
+      }
+
+      function stopSimulate() { if (simulateTimer) { clearInterval(simulateTimer); simulateTimer = null; } setConnected(false); }
+
+      // Wire UI
+      connectBtn.addEventListener('click', () => { if (simulateCheckbox.checked) startSimulate(); else connectWS(); });
+      disconnectBtn.addEventListener('click', () => { if (simulateCheckbox.checked) stopSimulate(); else disconnectWS(); });
+      simulateCheckbox.addEventListener('change', () => { if (simulateCheckbox.checked) { disconnectWS(); startSimulate(); } else { stopSimulate(); } });
+
+      addSymbolBtn.addEventListener('click', () => {
+        const v = (symbolInput.value || '').trim().toUpperCase();
+        if (!v) return;
+        subscribed.add(v);
+        renderRow(v, null, null, null);
+        symbolInput.value = '';
+      });
+
+      // Seed and hook into Hype if available
+      ['AAPL','GOOG','MSFT'].forEach(s => renderRow(s, null, null, null));
+      setConnected(false);
+
+      if (window.hype && typeof window.hype.sub === 'function') {
+        try {
+          window.hype.sub('price', payload => { if (payload && payload.symbol) renderRow(payload.symbol, payload.price, payload.change, payload.timestamp || Date.now()); });
+        } catch (e) { console.debug('hype.sub failed', e); }
+      }
+
+      // expose helpers for quick dev inspection
+      try { window.__wsStocks = { connectWS, disconnectWS, startSimulate, stopSimulate, renderRow, subscribed }; } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hype Reactive Examples</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    [data-hype-show] {
+      transition: opacity 0.2s;
+    }
+    .hype-loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 p-8">
+  <div class="max-w-4xl mx-auto space-y-12">
+    <header class="text-center mb-12">
+      <h1 class="text-4xl font-bold text-gray-900 mb-2">Hype Reactive Examples</h1>
+      <p class="text-gray-600">Alpine.js-inspired reactive state for Hype</p>
+    </header>
+
+    <!-- Example 1: Simple Toggle -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">1. Simple Toggle</h2>
+      <p class="text-gray-600 mb-4">Toggle state without any server interaction.</p>
+      
+      <div data-hype-state='{ "open": false }' class="space-y-4">
+        <button 
+          data-hype-on-click="toggle('open')"
+          class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Toggle Content
+        </button>
+        
+        <div data-hype-show="open" class="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+          <p class="text-blue-900">This content is toggled! Click the button to hide me.</p>
+        </div>
+        
+        <div data-hype-show="!open" class="p-4 bg-gray-50 border-l-4 border-gray-300 rounded">
+          <p class="text-gray-700">Content is hidden. Click the button to show it.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 2: Favorite/Heart Button -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">2. Favorite Button (Heart Icon)</h2>
+      <p class="text-gray-600 mb-4">Toggle favorite state with visual feedback.</p>
+      
+      <div data-hype-state='{ "favorited": false }' class="space-y-4">
+        <button 
+          data-hype-on-click="toggle('favorited')"
+          data-hype-class-scale-110="favorited"
+          class="p-3 rounded-full hover:bg-gray-100 transition-transform duration-200"
+          title="Toggle favorite"
+        >
+          <!-- Outline heart - shows when NOT favorited -->
+          <svg 
+            data-hype-show="!favorited" 
+            class="size-8" 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24"
+          >
+            <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+            </g>
+          </svg>
+          
+          <!-- Filled heart - shows when favorited -->
+          <svg 
+            data-hype-show="favorited" 
+            class="size-8 text-red-500" 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="currentColor"
+          >
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+          </svg>
+        </button>
+        
+        <p class="text-sm text-gray-600">
+          Status: <span data-hype-show="favorited" class="text-red-500 font-medium">❤️ Favorited</span>
+          <span data-hype-show="!favorited" class="text-gray-400">Not favorited</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- Example 3: Favorite with Server Sync -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">3. Favorite with Server Sync</h2>
+      <p class="text-gray-600 mb-4">Toggle favorite and sync with server (simulated).</p>
+      
+      <div data-hype-state='{ "favorited": false, "syncing": false }' class="space-y-4">
+        <button 
+          data-hype-post="/api/jobs/123/toggle-favorite"
+          data-hype-swap="none"
+          data-hype-on-click="toggle('favorited'); set('syncing', true)"
+          data-hype-class-opacity-50="syncing"
+          class="px-6 py-3 bg-white border-2 border-gray-300 rounded-lg hover:border-red-500 transition-colors flex items-center gap-2"
+        >
+          <!-- Heart icon -->
+          <svg 
+            data-hype-show="!favorited" 
+            class="size-5" 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24"
+          >
+            <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+            </g>
+          </svg>
+          <svg 
+            data-hype-show="favorited" 
+            class="size-5 text-red-500" 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="currentColor"
+          >
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+          </svg>
+          
+          <span data-hype-show="!favorited">Add to Favorites</span>
+          <span data-hype-show="favorited">Remove from Favorites</span>
+        </button>
+        
+        <div data-hype-show="syncing" class="text-sm text-blue-600">
+          ⏳ Syncing with server...
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 4: Counter -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">4. Counter</h2>
+      <p class="text-gray-600 mb-4">Simple counter with increment/decrement.</p>
+      
+      <div data-hype-state='{ "count": 0 }' class="space-y-4">
+        <div class="flex items-center gap-4">
+          <button 
+            data-hype-on-click="set('count', count - 1)"
+            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            -
+          </button>
+          
+          <div class="text-4xl font-bold min-w-[100px] text-center" data-hype-bind-data-count="count">
+            <span id="counter-display">0</span>
+          </div>
+          
+          <button 
+            data-hype-on-click="set('count', count + 1)"
+            class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            +
+          </button>
+        </div>
+        
+        <div class="text-sm text-gray-600">
+          <p data-hype-show="count === 0">Counter is at zero</p>
+          <p data-hype-show="count > 0" class="text-green-600">Count is positive: <span id="count-value"></span></p>
+          <p data-hype-show="count < 0" class="text-red-600">Count is negative: <span id="count-value-neg"></span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 5: Tabs -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">5. Tab Component</h2>
+      <p class="text-gray-600 mb-4">Simple tabs using reactive state.</p>
+      
+      <div data-hype-state='{ "activeTab": "home" }' class="space-y-4">
+        <!-- Tab buttons -->
+        <div class="flex gap-2 border-b-2 border-gray-200">
+          <button 
+            data-hype-on-click="set('activeTab', 'home')"
+            data-hype-class-border-blue-500="activeTab === 'home'"
+            data-hype-class-text-blue-600="activeTab === 'home'"
+            data-hype-class-text-gray-600="activeTab !== 'home'"
+            class="px-4 py-2 border-b-2 border-transparent hover:text-blue-600 transition-colors"
+          >
+            Home
+          </button>
+          <button 
+            data-hype-on-click="set('activeTab', 'profile')"
+            data-hype-class-border-blue-500="activeTab === 'profile'"
+            data-hype-class-text-blue-600="activeTab === 'profile'"
+            data-hype-class-text-gray-600="activeTab !== 'profile'"
+            class="px-4 py-2 border-b-2 border-transparent hover:text-blue-600 transition-colors"
+          >
+            Profile
+          </button>
+          <button 
+            data-hype-on-click="set('activeTab', 'settings')"
+            data-hype-class-border-blue-500="activeTab === 'settings'"
+            data-hype-class-text-blue-600="activeTab === 'settings'"
+            data-hype-class-text-gray-600="activeTab !== 'settings'"
+            class="px-4 py-2 border-b-2 border-transparent hover:text-blue-600 transition-colors"
+          >
+            Settings
+          </button>
+        </div>
+        
+        <!-- Tab content -->
+        <div class="p-4">
+          <div data-hype-show="activeTab === 'home'" class="space-y-2">
+            <h3 class="text-xl font-semibold">Home Tab</h3>
+            <p class="text-gray-600">Welcome to the home tab! This content is shown when the home tab is active.</p>
+          </div>
+          
+          <div data-hype-show="activeTab === 'profile'" class="space-y-2">
+            <h3 class="text-xl font-semibold">Profile Tab</h3>
+            <p class="text-gray-600">This is your profile information. Only visible when the profile tab is selected.</p>
+          </div>
+          
+          <div data-hype-show="activeTab === 'settings'" class="space-y-2">
+            <h3 class="text-xl font-semibold">Settings Tab</h3>
+            <p class="text-gray-600">Configure your settings here. This tab content is conditionally rendered.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 6: Form Validation -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">6. Form with Validation State</h2>
+      <p class="text-gray-600 mb-4">Show validation messages based on state.</p>
+      
+      <div data-hype-state='{ "email": "", "valid": false, "submitted": false }' class="space-y-4">
+        <div></div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input 
+            type="email" 
+            placeholder="you@example.com"
+            class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        
+        <button 
+          data-hype-on-click="set('submitted', true)"
+          class="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Submit
+        </button>
+        
+        <div data-hype-show="submitted" class="p-4 bg-green-50 border-l-4 border-green-500 rounded">
+          <p class="text-green-800">✓ Form submitted successfully!</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 7: Accordion -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">7. Accordion</h2>
+      <p class="text-gray-600 mb-4">Expandable content sections.</p>
+      
+      <div class="space-y-2">
+        <!-- Item 1 -->
+        <div data-hype-state='{ "open": false }' class="border border-gray-200 rounded">
+          <button 
+            data-hype-on-click="toggle('open')"
+            class="w-full px-4 py-3 text-left font-medium flex justify-between items-center hover:bg-gray-50"
+          >
+            <span>What is Hype?</span>
+            <span data-hype-show="!open">▼</span>
+            <span data-hype-show="open">▲</span>
+          </button>
+          <div data-hype-show="open" class="px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <p class="text-gray-600">Hype is a minimal progressive-enhancement fetch library with Alpine.js-inspired reactive state management.</p>
+          </div>
+        </div>
+        
+        <!-- Item 2 -->
+        <div data-hype-state='{ "open": false }' class="border border-gray-200 rounded">
+          <button 
+            data-hype-on-click="toggle('open')"
+            class="w-full px-4 py-3 text-left font-medium flex justify-between items-center hover:bg-gray-50"
+          >
+            <span>How does reactive state work?</span>
+            <span data-hype-show="!open">▼</span>
+            <span data-hype-show="open">▲</span>
+          </button>
+          <div data-hype-show="open" class="px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <p class="text-gray-600">State is declared in markup using data-hype-state, and automatically updates the DOM when changed using directives like data-hype-show and data-hype-class.</p>
+          </div>
+        </div>
+        
+        <!-- Item 3 -->
+        <div data-hype-state='{ "open": false }' class="border border-gray-200 rounded">
+          <button 
+            data-hype-on-click="toggle('open')"
+            class="w-full px-4 py-3 text-left font-medium flex justify-between items-center hover:bg-gray-50"
+          >
+            <span>Can I use it with server requests?</span>
+            <span data-hype-show="!open">▼</span>
+            <span data-hype-show="open">▲</span>
+          </button>
+          <div data-hype-show="open" class="px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <p class="text-gray-600">Yes! Combine data-hype-state with data-hype-post/get/etc to sync state changes with your backend.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example 8: Modal Dialog -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">8. Modal Dialog</h2>
+      <p class="text-gray-600 mb-4">Toggle a modal overlay.</p>
+      
+      <div data-hype-state='{ "showModal": false }'>
+        <button 
+          data-hype-on-click="set('showModal', true)"
+          class="px-6 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+        >
+          Open Modal
+        </button>
+        
+        <!-- Modal overlay -->
+        <div 
+          data-hype-show="showModal"
+          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        >
+          <div 
+            class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6 space-y-4"
+            data-hype-on-click.stop=""
+          >
+            <div class="flex justify-between items-center">
+              <h3 class="text-xl font-semibold">Modal Title</h3>
+              <button 
+                data-hype-on-click="set('showModal', false)"
+                class="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <p class="text-gray-600">
+              This is a modal dialog. Click the close button or outside to dismiss.
+            </p>
+            
+            <div class="flex gap-2 justify-end">
+              <button 
+                data-hype-on-click="set('showModal', false)"
+                class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button 
+                data-hype-on-click="set('showModal', false)"
+                class="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Documentation -->
+    <section class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-2xl font-semibold mb-4">Available Directives</h2>
+      
+      <div class="space-y-4">
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-state</h3>
+          <p class="text-gray-600">Declares reactive state for the component. Must be valid JSON or JavaScript object notation.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-state='{ "open": false, "count": 0 }'</code>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-on-{event}</h3>
+          <p class="text-gray-600">Handles events with access to state and helpers (toggle, set, $fetch, $state, $el).</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-on-click="toggle('open')"</code>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-show</h3>
+          <p class="text-gray-600">Shows/hides elements based on expression evaluation.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-show="count > 0"</code>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-class-{className}</h3>
+          <p class="text-gray-600">Conditionally applies CSS classes based on expression.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-class-text-red-500="isActive"</code>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-lg">data-hype-bind-{attribute}</h3>
+          <p class="text-gray-600">Binds attribute values to state expressions.</p>
+          <code class="block mt-2 p-2 bg-gray-100 rounded text-sm">data-hype-bind-disabled="loading"</code>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Load Hype library -->
+  <script type="module">
+    // In production, you would import from your bundled Hype library
+    // import { hype } from './dist/hype.js';
+    
+    // For now, we'll simulate the counter updates manually
+    document.querySelectorAll('[data-hype-state]').forEach(el => {
+      if (el.querySelector('#counter-display')) {
+        const observer = new MutationObserver(() => {
+          const bindEl = el.querySelector('[data-hype-bind\\:data-count]');
+          if (bindEl) {
+            const count = bindEl.getAttribute('data-count');
+            const display = el.querySelector('#counter-display');
+            if (display) display.textContent = count;
+            
+            const posValue = el.querySelector('#count-value');
+            if (posValue) posValue.textContent = count;
+            
+            const negValue = el.querySelector('#count-value-neg');
+            if (negValue) negValue.textContent = count;
+          }
+        });
+        observer.observe(el, { attributes: true, subtree: true });
+      }
+    });
+    
+    console.log('Hype Reactive Examples loaded. Initialize hype.init() to enable interactivity.');
+  </script>
+</body>
+</html>>

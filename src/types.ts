@@ -1,31 +1,29 @@
 /**
  * HTTP methods supported by Hype
  */
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 /**
  * Swap strategies for inserting HTML into the DOM
  */
-export type SwapStrategy =
-  | 'innerHTML'
-  | 'outerHTML'
-  | 'beforebegin'
-  | 'afterbegin'
-  | 'beforeend'
-  | 'afterend'
-  | 'delete'
-  | 'none';
+export type SwapStrategy = "innerHTML" | "innerText" | "outerHTML" | "beforebegin" | "afterbegin" | "beforeend" | "afterend" | "delete" | "none";
 
 /**
  * Hype event names
  */
-export type HypeEventName =
-  | 'hype:before-request'
-  | 'hype:before-swap'
-  | 'hype:after-swap'
-  | 'hype:after-settle'
-  | 'hype:request-error'
-  | 'hype:response-error';
+export type HypeEventName = "hype:before-request" | "hype:before-swap" | "hype:after-swap" | "hype:after-settle" | "hype:request-error" | "hype:response-error";
+
+/**
+ * Configuration options for Hype
+ */
+export interface PluginConfig {
+  /** Attach built-in pub/sub plugin (default: true) */
+  pubsub?: boolean;
+  /** Attach built-in behavior registry & debounce plugin (default: true) */
+  behavior?: boolean;
+  /** Whether default debounce wiring should be enabled (default: true) */
+  debounce?: boolean;
+}
 
 /**
  * Configuration options for Hype
@@ -46,13 +44,15 @@ export interface HypeConfig {
   /** Whether to throw on non-2xx responses */
   throwOnHttpError: boolean;
   /** Request deduplication behavior: 'cancel' previous, 'ignore' new, or 'allow' all */
-  dedupe: 'cancel' | 'ignore' | 'allow';
+  dedupe: "cancel" | "ignore" | "allow";
   /** History push behavior: 'push', 'replace', or false */
-  history: 'push' | 'replace' | false;
+  history: "push" | "replace" | false;
   /** Attribute prefix (default: 'hype') */
   attributePrefix: string;
   /** Enable debug logging */
   debug: boolean;
+  /** Optional plugin toggles (pubsub / behavior / debounce) */
+  plugins?: PluginConfig;
 }
 
 /**
@@ -112,33 +112,22 @@ export interface HypeJsonResponse {
 /**
  * Request interceptor function
  */
-export type RequestInterceptor = (
-  ctx: RequestContext
-) => RequestContext | Promise<RequestContext> | void | Promise<void>;
+export type RequestInterceptor = (ctx: RequestContext) => RequestContext | Promise<RequestContext> | void | Promise<void>;
 
 /**
  * Response interceptor function
  */
-export type ResponseInterceptor = (
-  ctx: ResponseContext
-) => ResponseContext | Promise<ResponseContext> | void | Promise<void>;
+export type ResponseInterceptor = (ctx: ResponseContext) => ResponseContext | Promise<ResponseContext> | void | Promise<void>;
 
 /**
  * Custom swap handler function
  */
-export type SwapHandler = (
-  target: HTMLElement,
-  html: string,
-  strategy: SwapStrategy
-) => void | Promise<void>;
+export type SwapHandler = (target: HTMLElement, html: string, strategy: SwapStrategy) => void | Promise<void>;
 
 /**
  * Validation function for forms
  */
-export type ValidationFn = (
-  form: HTMLFormElement,
-  formData: FormData
-) => boolean | string | Promise<boolean | string>;
+export type ValidationFn = (form: HTMLFormElement, formData: FormData) => boolean | string | Promise<boolean | string>;
 
 /**
  * Event detail for hype:before-request
@@ -192,19 +181,12 @@ export interface ResponseErrorDetail {
 /**
  * Combined event detail type
  */
-export type HypeEventDetail =
-  | BeforeRequestDetail
-  | BeforeSwapDetail
-  | AfterSwapDetail
-  | AfterSettleDetail
-  | RequestErrorDetail
-  | ResponseErrorDetail;
+export type HypeEventDetail = BeforeRequestDetail | BeforeSwapDetail | AfterSwapDetail | AfterSettleDetail | RequestErrorDetail | ResponseErrorDetail;
 
 /**
  * Hype custom event
  */
-export interface HypeEvent<T extends HypeEventDetail = HypeEventDetail>
-  extends CustomEvent<T> {
+export interface HypeEvent<T extends HypeEventDetail = HypeEventDetail> extends CustomEvent<T> {
   type: HypeEventName;
 }
 

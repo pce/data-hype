@@ -21,16 +21,16 @@ export type {
   HypeEvent,
   HypeElement,
   HypeAttributes,
-} from './types';
+} from "./types";
 
 // Event system
-export { EventSystem, eventSystem } from './events';
+export { EventSystem, eventSystem } from "./events";
+
+// Reactive system
+export { ReactiveSystem, createReactive } from "./reactive";
 
 // Interceptors
-export {
-  InterceptorRegistry,
-  defaultSwap,
-} from './interceptors';
+export { InterceptorRegistry, defaultSwap } from "./interceptors";
 
 // Form utilities
 export {
@@ -44,10 +44,16 @@ export {
   getFormMethod,
   getFormAction,
   prepareRequestBody,
-} from './form';
+} from "./form";
 
 // Main Hype class
-export { Hype, createHype, hype } from './hype';
+export { Hype, createHype, hype } from "./hype";
+
+// Plugins and helpers (convenience exports)
+// Export pubsub and behavior helpers so tests and consumers can import them directly from the package entrypoint.
+// These are lightweight re-exports of the optional plugin modules and do not force the plugins to be attached to Hype.
+export { createHypePubsub, attachToHype, pubsubPlugin } from "./plugins/pubsub";
+export { createBehaviorRegistry, parseTriggerSpec, attachBehaviorsFromAttribute, attachDebounce, behaviorPlugin } from "./plugins/behavior";
 
 // Default export
-export { hype as default } from './hype';
+export { hype as default } from "./hype";

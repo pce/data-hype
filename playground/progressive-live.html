@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <</head>meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype — Progressive +</title> Live Example</title>
+  <meta name="description" content="Progressive server-rendered HTML that upgrades to live updates via WebSocket (Hype example)" />
+  <style></style>
+    :root { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color: #0f172a; background: #f8fafc; }
+    body { margin: 0; padding: 28px; }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    header { margin-bottom: 18px; }
+    .card { background: #fff; border-radius: 10px; padding: 18px; box-shadow: 0 1px 2px rgba(2,6,23,0.06); margin-bottom: 16px; }
+    h1 { margin: 0 0 6px 0; font-size: 1.25rem; }
+    p.muted { color: #475569; margin: 6px 0 0 0; }
+    .live-badge { display:inline-block; padding: 3px 8px; border-radius: 999px; background:#ecfdf5; color:#065f46; font-weight:600; font-size:0.8rem; margin-left:8px; vertical-align:middle; }
+    ul.items { list-style: none; padding: 0; margin: 12px 0 0 0; }
+    li.item { display:flex; justify-content:space-between; gap:12px; padding: 10px 0; border-bottom: 1px solid #eef2f7; align-items:center; }
+    .meta { color:#64748b; font-size:0.9rem; }
+    .btn { background:#111827; color:#fff; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+    .btn.secondary { background: transparent; border: 1px solid #e6edf3; color:#0f172a; }
+    pre.snippet { background:#0b1220; color:#e6eef6; padding:10px; border-radius:6px; overflow:auto; font-size:13px; }
+    .muted-note { color:#475569; font-size:0.95rem; }
+    noscript p { margin: 8px 0 0 0; color:#475569; }
+    .small { font-size:0.85rem; color:#64748b; }
+  </style>
+</head>
+<body></body>
+  <div class="wrap">
+    <header>
+      <h</header>1>Progressive + Live Example</h1>
+      <p class="muted">This page is fully usable when rendered by the server. When JavaScript is available it upgrades to a WebSocket-powered live region.</p>
+    </header>
+
+    <!-- Live region:
+         - Server renders the initial fragment inside the element with a stable data-hype-id.
+         - Servers should expose a snapshot endpoint like GET /_hype_snapshot/:id that returns the same fragment.
+         - When a client with JS connects, it will send {type:"join", id, view?} and receive patches.
+    -->
+    <section class="card" aria-labelledby="live-heading">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <h2 id="</div>live-heading" style="margin:0;">Active Items
+            <span id="live-indicator" class="live-badge" aria-hidden="true">static</span>
+          </h2>
+          <p class="small" style="margin:6px 0 0 0;">Initial HTML is produced server-side so crawlers and non-JS clients see content immediately.</p>
+        </div>
+        <div class="small" aria-hidden="true">node: <code id="node-id" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">—</code></div>
+      </div>
+
+      <!-- server-rendered fragment -->
+      <div
+        id="items-region"
+        data-hype-live="items/index"
+        data-hype-id="items-list-1"
+        role="region"
+        aria-live="polite"
+        style="margin-top:12px;"
+      >
+        <!-- Example initial HTML that the server renders -->
+        <ul class="items" aria-describedby="items-desc">
+          <li class="item" data-id="1">
+            <div>
+              <strong>Alpha</strong>
+              <div class="meta">score: <span class="meta-value">3</span></div>
+            </div>
+            <div>
+              <!-- A progressive action: server should accept POST /items/1/toggle
+                   If JS is absent the form submits normally.
+                   When</div></strong></div> JS is present Hype intercepts and sends an XHR / event instead. -->
+              <form action="/items/1/toggle" method="post" class="inline-action" data-hype-swap="outerHTML">
+                <!-- server must render CSRF token for non-JS clients -->
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn" type="submit">Toggle</button>
+              </form>
+            </div>
+          </li>
+
+          <li class="item" data-id="2">
+            <div>
+              <strong>Bravo</div></strong></strong>
+              <div class="meta">score: <span class="meta-value">7</span></div>
+            </div>
+            <div>
+              <form action="/items/</div>2/toggle" method="post" class="inline-action" data-hype-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn" type="submit">Toggle</button>
+              </form>
+            </div>
+          </li>
+
+          <li class="item" data-id="3">
+            <div></div>
+              <strong>Charlie</strong></strong>
+              <div class="meta">score: <span class="meta-value">1</span></div>
+            </div>
+            <div>
+              <form action="/</div>items/3/toggle" method="post" class="inline-action" data-hype-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn" type="submit">Toggle</button>
+              </form>
+            </div>
+          </li>
+        </ul>
+
+        <p id="items-desc" class="muted-note" style="margin-top:12px;">To fetch a machine-readable snapshot, use <a href="/api/items" rel="nofollow">/api/items</a>. For an HTML fragment of this region use <a href="/_hype_snapshot/items-list-1">/_hype_snapshot/items-list-1</a>.</p>
+      </div>
+
+      <noscript>
+        <p class="mut</noscript>ed-note">JavaScript is disabled. You can still interact: the forms above will POST to the server and the server will return a new page. You can also fetch JSON at <a href="/api/items" rel="nofollow">/api/items</a>.</p>
+      </noscript>
+    </section>
+
+    <section class="card">
+      <h3 style="margin:0 0 8px 0;">How the progressive upgrade works</h3>
+      <ul style="margin:0 0 12px 18px;">
+        <li class="muted-note">Server renders the initial fragment for the live region (same template can be used for snapshots).</li>
+        <li class="muted-note">Client JS opens a WebSocket to <code>/_hype_live</code> and sends a <code></code></code>join</code> message for each region.</li>
+        <li class="muted-note">Server validates events, updates state, and pushes patches of the fragment: <code>{type:'patch', id, html}</code>.</li>
+        <li class="muted-note">Forms and interactive elements degrade to regular requests when JS is not available.</li>
+      </ul>
+
+      <h4 style="margin-top:12px;margin-bottom:8px;">Developer snippet (minimal client)</h4>
+      <pre class="snippet" aria-hidden="true">
+// Minimal runtime: join live regions and apply incoming patch messages.
+// Production: add auth handshake, reconnection/backoff, and robust patching (morphdom).
+(function () {
+  if (!('WebSocket' in window)) return; // progressive: do nothing if no WS support
+
+  const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/_hype_live';
+  const ws = new WebSocket(WS_URL);
+
+  // Replace fragment content. If morphdom is available it will be used to preserve state.
+  function applyPatch(id, html) {
+    const node = document.querySelector('[data-hype-id=\"' + id + '\"]');
+    if (!node) return;
+    if (window.morphdom) {
+      try { window.morphdom(node, '<div>' + html + '</div>'); return; } catch (e) { console.warn('morphdom failed', e); }
+    }
+    node.innerHTML = html;
+  }
+
+  // Intercept form submissions inside live regions and send as XHR/WS event.
+  function interceptForms(ws) {
+    document.addEventListener('submit', function (ev) {
+      const form = ev.target;
+      if (!form.closest('[data-hype-id]')) return; // only handle forms inside live fragments
+      // If the form explicitly opts out, allow normal submit
+      if (form.hasAttribute('data-hype-no-ajax')) return;
+      ev.preventDefault();
+
+      // Prefer fetch XHR for form submits so we get response HTML (or JSON)
+      const action = form.getAttribute('action') || location.href;
+      const method = (form.getAttribute('method') || 'GET').toUpperCase();
+      const formData = new FormData(form);
+
+      // Build fetch options
+      const opts = { method: method, credentials: 'same-origin', headers: {} };
+      if (method !== 'GET') {
+        // Attempt to send as form data; server can return fragment HTML
+        opts.body = formData;
+      }
+
+      fetch(action, opts).then(function (res) {
+        // If the server returns HTML fragment, replace the form's swap target
+        const contentType = res.headers.get('Content-Type') || '';
+        if (contentType.indexOf('text/html') !== -1) {
+          return res.text().then(function (html) {
+            // By default swap the closest element with data-hype-swap target or the form's parent
+            const swapTarget = form.closest('[data-hype-swap]') || form.parentElement;
+            if (swapTarget) swapTarget.outerHTML = html;
+          });
+        } else if (contentType.indexOf('application/json') !== -1) {
+          return res.json().then(function (data) {
+            // If server returns {patch: {id, html}} apply it
+            if (data && data.patch && data.patch.id) {
+              applyPatch(data.patch.id, data.patch.html || '');
+            }
+          });
+        }
+      }).catch(function (err) { console.error('submit failed', err); });
+    }, false);
+  }
+
+  ws.addEventListener('open', function () {
+    document.getElementById('live-indicator').textContent = 'live';
+    // join all live regions
+    document.querySelectorAll('[data-hype-live]').forEach(function (el) {
+      const id = el.getAttribute('data-hype-id') || ('h' + Math.random().toString(36).slice(2, 9));
+      el.setAttribute('data-hype-id', id);
+      const view = el.getAttribute('data-hype-live');
+      ws.send(JSON.stringify({ type: 'join', id: id, view: view }));
+      document.getElementById('node-id').textContent = id;
+    });
+
+    // enable form interception once open
+    interceptForms(ws);
+  });
+
+  ws.addEventListener('message', function (ev) {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'patch' && msg.id && typeof msg.html === 'string') {
+        applyPatch(msg.id, msg.html);
+      } else if (msg.type === 'redirect' && msg.url) {
+        window.location.href = msg.url;
+      } else if (msg.type === 'event') {
+        // custom server event: dispatch for page-level handlers
+        document.dispatchEvent(new CustomEvent('hype:live:event', { detail: msg }));
+      }
+    } catch (err) {
+      console.warn('invalid live message', err);
+    }
+  });
+
+  ws.addEventListener('close', function () {
+    document.getElementById('live-indicator').textContent = 'disconnected';
+    // simple reconnect with delay
+    setTimeout(function () { location.reload(); }, 1500);
+  });
+
+})();
+      </pre>
+
+      <p class="muted-note" style="margin-top:12px;">Security notes: authenticate the WebSocket connection (session cookie, signed token, or handshake), validate and sanitize all incoming payloads on the server, and apply rate limiting for event messages.</p>
+    </section>
+
+    <section class="card">
+      <h3 style="margin:0 0 8px 0;">Server endpoints (recommended)</h3>
+      <ul style="margin:0 0 12px 18px;">
+        <li class="muted-note"><code>GET /</code></code> — initial page render (includes server-rendered live fragments)</li>
+        <li class="muted-note"><code>GET /_hype_snapshot/:id</</code>code> — return the current fragment HTML for the region :id (used by crawlers / non-JS clients)</li>
+        <li class="muted-note"><code>WS</code>  /_hype_live</code> — WebSocket endpoint; accepts messages {type: 'join'|'event'|'heartbeat'} and pushes {type: 'patch'|'redirect'|'event'}</li>
+        <li class="muted-note"><code>POST /items/:id/t</code>oggle</code> — action endpoint for non-JS form fallback (or called by fetch on JS clients)</li>
+      </ul>
+
+      <h4 style="margin:10px 0 6px 0;">Docker / dev server note (Vite or Bun)</h4>
+      <p class="muted-note">When running a JS dev server inside a container, make sure the dev server binds to <code>0.0.0</code>.0</code> (or pass <code>--host</code>)</code> and the container maps the port (for Vite default 5173). For Bun-based dev servers use the Bun image and expose the dev port similarly.</p>
+    </section>
+
+    <footer style="text-align:center; margin-top:14px; color:#94a3b8;">Hype playground — progressive &amp; live demo</footer>
+  </div>
+</body>
+</html>

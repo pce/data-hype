@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+docs-output/
+doc/
+
+.pnpm-store/
+
+# Build outputs
+dist/
+
+# Coverage
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Lock files (keep pnpm-lock.yaml)
+package-lock.json
+yarn.lock
+bun.lockb
+_docs/
+docs-output/

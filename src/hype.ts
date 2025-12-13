@@ -30,6 +30,7 @@ import {
 // Plugins (optional): pubsub & behavior registry (exposed as plugins)
 import { pubsubPlugin } from "./plugins/pubsub";
 import { behaviorPlugin } from "./plugins/behavior";
+import { authPlugin } from "./plugins/auth";
 
 /**
  * Default configuration
@@ -57,11 +58,12 @@ const DEFAULT_CONFIG: HypeConfig = {
   debug: false,
   // Default plugin toggles: control convenience plugins attached during `init()`.
   // Plugins are JS-only: HTML remains valid and functional without JavaScript.
-  // Consumers can override via createHype({ plugins: { pubsub: false, behavior: false } })
+  // Consumers can override via createHype({ plugins: { pubsub: false, behavior: false, auth: false } })
   plugins: {
     pubsub: true,
     behavior: true,
     debounce: true,
+    auth: true,
   },
 };
 
@@ -147,26 +149,28 @@ export class Hype {
    * Create attribute names based on prefix
    */
   private createAttributes(prefix: string): HypeAttributes {
-    // Use full data- attribute names so DOM lookups (getAttribute / hasAttribute)
-    // match markup authored as `data-{prefix}-...` (e.g. `data-hype-post`).
+    // Use plain prefix-based attribute names (no automatic `data-` prefix) so
+    // consumers can opt to author attributes either as `hype-post` or as
+    // `data-hype-post` if they prefer. The runtime looks up the exact name
+    // returned here when querying attributes.
     return {
-      get: `data-${prefix}-get`,
-      post: `data-${prefix}-post`,
-      put: `data-${prefix}-put`,
-      delete: `data-${prefix}-delete`,
-      patch: `data-${prefix}-patch`,
-      target: `data-${prefix}-target`,
-      swap: `data-${prefix}-swap`,
-      trigger: `data-${prefix}-trigger`,
-      confirm: `data-${prefix}-confirm`,
-      validate: `data-${prefix}-validate`,
-      indicator: `data-${prefix}-indicator`,
-      disabled: `data-${prefix}-disabled-elt`,
-      headers: `data-${prefix}-headers`,
-      vals: `data-${prefix}-vals`,
-      encoding: `data-${prefix}-encoding`,
-      push: `data-${prefix}-push-url`,
-      boost: `data-${prefix}-boost`,
+      get: `${prefix}-get`,
+      post: `${prefix}-post`,
+      put: `${prefix}-put`,
+      delete: `${prefix}-delete`,
+      patch: `${prefix}-patch`,
+      target: `${prefix}-target`,
+      swap: `${prefix}-swap`,
+      trigger: `${prefix}-trigger`,
+      confirm: `${prefix}-confirm`,
+      validate: `${prefix}-validate`,
+      indicator: `${prefix}-indicator`,
+      disabled: `${prefix}-disabled-elt`,
+      headers: `${prefix}-headers`,
+      vals: `${prefix}-vals`,
+      encoding: `${prefix}-encoding`,
+      push: `${prefix}-push-url`,
+      boost: `${prefix}-boost`,
     };
   }
 
@@ -231,6 +235,16 @@ export class Hype {
         this.attach(behaviorPlugin);
       } catch (e) {
         if (this.config.debug) console.warn("Hype: failed to attach behavior plugin", e);
+      }
+    }
+
+    // Optional auth plugin: attaches convenience auth helpers (hype.auth, hype.login, etc.)
+    // Enabled by default in DEFAULT_CONFIG.plugins.auth, consumers can disable via config.
+    if ((pluginsCfg as any).auth !== false) {
+      try {
+        this.attach(authPlugin);
+      } catch (e) {
+        if (this.config.debug) console.warn("Hype: failed to attach auth plugin", e);
       }
     }
 
@@ -887,3 +901,11 @@ export function createHype(config?: Partial<HypeConfig>): Hype {
  * Default Hype instance for convenience
  */
 export const hype = createHype();
+
+// Re-export common built-in plugins from the `plugins` directory so consumers can
+// import them directly from the main package (e.g. `import { pubsubPlugin } from './hype'`).
+export { pubsubPlugin } from "./plugins/pubsub";
+export { behaviorPlugin } from "./plugins/behavior";
+// The auth plugin is provided alongside other plugins in `src/plugins/auth.ts`.
+// Consumers can opt-in by calling `hype.attach(authPlugin)`.
+export { authPlugin } from "./plugins/auth";

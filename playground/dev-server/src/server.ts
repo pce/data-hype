@@ -1,20 +1,23 @@
 /**
  * Dev server with static example pages, Hype Live WS protocol, Stocks WS, and SSE endpoints.
  *
- * This file extends the previous minimal dev server with:
- *  - WS /_hype_live  -> Hype live protocol (join/ event / patch)
- *  - WS /stocks/ws   -> simple stocks websocket (subscribe/unsubscribe/snapshot/update)
- *  - GET /stocks/sse -> Server-Sent Events feed for stocks (snapshot + updates)
+ * Enhanced:
+ *  - Per-request Content-Security-Policy with nonce
+ *  - CSRF protection using cookie-based csurf
+ *  - CSRF token endpoint: GET /csrf-token
+ *  - Error handler for CSRF and other errors
  *
  * Notes:
  *  - This server is intended for local development only.
- *  - In production you should tighten auth, CORS and other protections.
+ *  - In production you should tighten auth, CORS and other protections and manage secrets appropriately.
  */
 
 import express from "express";
 import http from "http";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+// @ts-ignore: optional dev dependency in the playground dev-server; types may not be present in all environments
+import csurf from "csurf";
 import { WebSocketServer, WebSocket } from "ws";
 import { fileURLToPath } from "url";
 import path from "path";
@@ -54,6 +57,76 @@ function verifyJoinToken(token: string) {
 }
 
 /* -------------------------
+   Simple auth tokens (demo)
+   - signAuthToken / verifyAuthToken
+   - cookie helpers: setAuthCookie / clearAuthCookie
+   - requireAuth middleware
+   ------------------------- */
+
+const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || "dev-auth-secret-change-me";
+const AUTH_COOKIE_NAME = "auth_token";
+
+function signAuthToken(subject: string, ttlSec = 60 * 60) {
+  const exp = Math.floor(Date.now() / 1000) + ttlSec;
+  const payload = JSON.stringify({ sub: subject, exp });
+  const b64 = Buffer.from(payload, "utf8").toString("base64url");
+  const sig = crypto.createHmac("sha256", AUTH_TOKEN_SECRET).update(b64).digest("base64url");
+  return `${b64}.${sig}`;
+}
+
+function verifyAuthToken(token: string | undefined | null) {
+  try {
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+    const [b64, sig] = parts;
+    const expected = crypto.createHmac("sha256", AUTH_TOKEN_SECRET).update(b64).digest("base64url");
+    if (sig !== expected) return null;
+    const payloadJson = Buffer.from(b64, "base64url").toString("utf8");
+    const payload = JSON.parse(payloadJson);
+    if (!payload || typeof payload.exp !== "number") return null;
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Helper to set auth cookie on response
+function setAuthCookie(res: express.Response, token: string, ttlSec = 60 * 60) {
+  const cookieOptions: any = {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: ttlSec * 1000,
+    path: "/",
+  };
+  res.cookie(AUTH_COOKIE_NAME, token, cookieOptions);
+}
+
+// Helper to clear auth cookie
+function clearAuthCookie(res: express.Response) {
+  res.clearCookie(AUTH_COOKIE_NAME, { path: "/" });
+}
+
+// Middleware to require authentication for API endpoints
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const token = (req.cookies && (req.cookies as any)[AUTH_COOKIE_NAME]) || req.header("Authorization")?.replace(/^Bearer\s+/, "");
+    const payload = verifyAuthToken(token as string | undefined);
+    if (!payload) {
+      res.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
+    // attach user info to request for handlers
+    (req as any).user = { id: payload.sub };
+    next();
+  } catch (err) {
+    res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+}
+
+/* -------------------------
    Types
    ------------------------- */
 
@@ -82,7 +155,6 @@ const items: Record<string, Item> = {
 };
 
 // Simple in-memory jobs demo state for favorite toggling.
-// This backs the frontend example that posts to /api/jobs/:id/toggle-favorite
 interface Job {
   id: string;
   title: string;
@@ -139,26 +211,19 @@ function renderItemsFragment(): string {
 <li class="item" data-id="${escapeHtml(it.id)}">
   <div>
     <strong>${escapeHtml(it.title)}</strong>
-    <div class="meta">score: <span class="meta-value">${it.score}</span></div>
   </div>
-  <div>
-    <form action="/items/${encodeURIComponent(it.id)}/toggle" method="post" class="inline-action" data-hype-swap="outerHTML">
-      <input type="hidden" name="csrf_token" value="DUMMY_CSRF_TOKEN" />
-      <button class="btn" type="submit">${it.active ? "Deactivate" : "Activate"}</button>
-    </form>
-  </div>
+  <div>Score: ${escapeHtml(it.score)}</div>
+  <div>Active: ${it.active ? "yes" : "no"}</div>
 </li>`,
     )
     .join("\n");
-
-  return `<ul class="items" aria-describedby="items-desc">\n${list}\n</ul>`;
+  return `<ul id="items-list-1">${list}</ul>`;
 }
 
-function renderRegionHtmlForId(nodeId: string): string {
-  if (nodeId === "items-list-1") {
-    return renderItemsFragment();
-  }
-  return `<div data-hype-id="${escapeHtml(nodeId)}"></div>`;
+function renderRegionHtmlForId(id: string) {
+  // Simple example: return a fragment that the client will use to patch a region.
+  // If you need to include inline scripts here, use res.locals.cspNonce when serving via Express.
+  return `<div data-region-id="${escapeHtml(id)}">${renderItemsFragment()}</div>`;
 }
 
 function broadcastPatch(id: string, html: string, tx?: number) {
@@ -167,66 +232,115 @@ function broadcastPatch(id: string, html: string, tx?: number) {
   const msg: ServerMsg = { type: "patch", id, html, tx };
   const data = JSON.stringify(msg);
   for (const ws of subs) {
-    if (ws.readyState === ws.OPEN) {
+    try {
       ws.send(data);
+    } catch {
+      // ignore send errors
     }
   }
 }
 
-/* -------------------------
-   Stocks broadcast helpers
-   ------------------------- */
-
-function broadcastStockUpdate(stock: Stock) {
-  const payload = { type: "update", symbol: stock.symbol, price: stock.price, change: stock.change, timestamp: stock.timestamp };
+function broadcastStockUpdate(s: Stock) {
+  const payload = { type: "stock:update", symbol: s.symbol, price: s.price, change: s.change, timestamp: s.timestamp };
   const text = JSON.stringify(payload);
-
-  // WS clients
+  // send to WS stock clients
   for (const ws of stocksClients) {
-    if (ws.readyState === ws.OPEN) {
-      try {
-        ws.send(text);
-      } catch (e) {
-        // ignore per-client errors
-      }
-    }
+    try {
+      ws.send(text);
+    } catch {}
   }
-
-  // SSE clients
+  // send to SSE clients
   for (const res of sseClients) {
     try {
       res.write(`data: ${text}\n\n`);
-    } catch (e) {
-      // ignore; closed clients are cleaned up elsewhere
-    }
+    } catch {}
   }
 }
 
 function sendStocksSnapshot(ws: WebSocket, symbols?: string[]) {
-  const itemsArr = (symbols && symbols.length > 0 ? symbols : Object.keys(stocks)).map((s) => stocks[s]).filter(Boolean);
+  const itemsArr = Object.values(stocks).filter((s) => (symbols ? symbols.includes(s.symbol) : true));
+  const payload = { type: "stocks:snapshot", items: itemsArr };
   try {
-    ws.send(JSON.stringify({ type: "snapshot", items: itemsArr }));
-  } catch (e) {
-    /* ignore */
-  }
+    ws.send(JSON.stringify(payload));
+  } catch {}
 }
 
 function sendSseSnapshot(res: ServerResponse, symbols?: string[]) {
-  const itemsArr = (symbols && symbols.length > 0 ? symbols : Object.keys(stocks)).map((s) => stocks[s]).filter(Boolean);
-  const payload = { type: "snapshot", items: itemsArr };
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  const itemsArr = Object.values(stocks).filter((s) => (symbols ? symbols.includes(s.symbol) : true));
+  const payload = { type: "stocks:snapshot", items: itemsArr };
+  try {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  } catch {}
 }
 
 /* -------------------------
-   Express app + static
+   Express app + security middleware
    ------------------------- */
 
 const app = express();
 
+// Basic middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Per-request CSP + other security headers middleware
+// NOTE: we no longer allow 'unsafe-inline'. Instead we generate a per-request nonce
+// and expose it via res.locals.cspNonce so server-rendered HTML can use the nonce
+// for inline style/script tags (preferred: move inline code into external modules).
+app.use((req, res, next) => {
+  try {
+    // generate a per-request nonce (base64)
+    const nonce = crypto.randomBytes(16).toString("base64");
+    (res.locals as any).cspNonce = nonce;
+
+    // Use nonce-only for scripts and styles (no 'unsafe-inline')
+    const scriptSrc = `'self' 'nonce-${nonce}'`;
+    const styleSrc = `'self' 'nonce-${nonce}' https:`;
+
+    const csp = [
+      `default-src 'self'`,
+      `script-src ${scriptSrc}`,
+      `style-src ${styleSrc}`,
+      `object-src 'none'`,
+      `base-uri 'self'`,
+      `frame-ancestors 'none'`,
+    ].join("; ");
+
+    res.setHeader("Content-Security-Policy", csp);
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer-when-downgrade");
+  } catch (e) {
+    // ignore header-setting errors in dev
+  }
+  next();
+});
+
+/*
+  CSRF protection: use cookie-based csurf.
+  This will:
+    - Populate req.csrfToken() for handlers (GET can call it to provide token)
+    - Validate non-GET requests for the token sent via header or body/query param
+  The client should send the token in the 'X-CSRF-Token' header (or conventional names).
+*/
+const csrfProtection = csurf({
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    // path: '/', // default
+  },
+});
+
+// Apply CSRF protection globally for mutating requests. We register it as middleware so
+// that GETs still produce a token (req.csrfToken) and non-safe methods are checked.
+app.use(csrfProtection);
+
+/* -------------------------
+   Static files and routes (unchanged behavior, with CSRF tokens available)
+   ------------------------- */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -236,11 +350,99 @@ if (!fs.existsSync(publicDir)) {
   console.warn(`Dev server public directory not found: ${publicDir}`);
 }
 
+// Serve HTML files with per-request nonce injection so CSP can remain strict.
+// This middleware will attempt to read .html files from the public directory,
+// replace any occurrence of the token %CSP_NONCE% with the generated nonce,
+// and inject a <meta name="csp-nonce"> tag into the <head> if one is not present.
+// For non-HTML assets fall through to the static server below.
+app.use((req, res, next) => {
+  try {
+    const accept = req.headers.accept || "";
+    const wantsHtml = req.path === "/" || req.path.endsWith(".html") || accept.includes("text/html");
+
+    if (wantsHtml) {
+      const targetPath = req.path === "/" ? "index.html" : req.path.replace(/^\/+/, "");
+      const filePath = path.join(publicDir, targetPath);
+
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const nonce = (res.locals as any).cspNonce || crypto.randomBytes(16).toString("base64");
+        let html = fs.readFileSync(filePath, "utf8");
+
+        // Replace any explicit placeholder tokens with the nonce.
+        // Authors can include %CSP_NONCE% in templates where they need the nonce
+        // attribute (for example: <script nonce="%CSP_NONCE%"> ... </script>).
+        html = html.replace(/%CSP_NONCE%/g, nonce);
+
+        // If no meta tag exists to expose the nonce, inject one into <head>.
+        if (!/meta[^>]*name=(?:'|")csp-nonce(?:'|")/i.test(html)) {
+          html = html.replace(/<head([^>]*)>/i, `<head$1>\n<meta name="csp-nonce" content="${nonce}">`);
+        }
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(html);
+        return;
+      }
+    }
+  } catch (e) {
+    // If any injection step fails, fall back to static serving
+  }
+  next();
+});
+
+// Serve other static assets (images, js, css, etc.)
 app.use(express.static(publicDir, { extensions: ["html"] }));
 
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
+// Public API endpoints
+/* -------------------------
+   Auth routes (demo)
+   - POST /login  -> accepts simple credentials, issues auth cookie (JWT-like HMAC token)
+   - POST /logout -> clears auth cookie
+   - GET  /me     -> returns authenticated user info
+   Note: This is a demo implementation. Replace credential checks with real user store / hashing in production.
+   CSRF protection applies (client should fetch /csrf-token and send X-CSRF-Token for POSTs).
+   ------------------------- */
+
+app.post("/login", (req, res) => {
+  const { username, password } = req.body || {};
+  // Demo credential check: accept any non-empty username, and optional simple password check.
+  // Replace this with real user lookup and password verification (bcrypt/argon2) in production.
+  if (!username || typeof username !== "string" || username.trim() === "") {
+    res.status(400).json({ ok: false, error: "username required" });
+    return;
+  }
+
+  // Example: simple hard-coded check (for demo only)
+  // Accept any username, or enforce username === "demo" && password === "password" if you prefer stricter demo behavior.
+  // if (username !== "demo" || password !== "password") {
+  //   res.status(401).json({ ok: false, error: "invalid credentials" });
+  //   return;
+  // }
+
+  const token = signAuthToken(username, 60 * 60); // 1 hour
+  setAuthCookie(res, token, 60 * 60);
+
+  // Optionally return the token in response body for SPA clients (but cookie is the primary auth channel here)
+  res.json({ ok: true, user: { id: username } });
 });
+
+app.post("/logout", (req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
+});
+
+app.get("/me", (req, res) => {
+  const token = (req.cookies && (req.cookies as any)[AUTH_COOKIE_NAME]) || req.header("Authorization")?.replace(/^Bearer\s+/, "");
+  const payload = verifyAuthToken(token as string | undefined);
+  if (!payload) {
+    res.status(401).json({ ok: false, error: "unauthenticated" });
+    return;
+  }
+  res.json({ ok: true, user: { id: payload.sub } });
+});
+
+/* -------------------------
+   Public API: items
+   ------------------------- */
 
 app.get("/api/items", (_req, res) => {
   const list = Object.values(items);
@@ -268,6 +470,25 @@ app.post("/api/jobs/:id/toggle-favorite", (req, res) => {
   res.json({ ok: true, job: { ...job } });
 });
 
+/* -------------------------
+   CSRF token endpoint
+   ------------------------- */
+
+app.get("/csrf-token", (req, res) => {
+  // Return the token to the client so it can be used for subsequent mutating requests.
+  // The middleware also sets a cookie-based secret; the client should send the token in header 'X-CSRF-Token'.
+  try {
+    const token = (req as any).csrfToken();
+    res.json({ ok: true, csrfToken: token });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: "Unable to generate CSRF token" });
+  }
+});
+
+/* -------------------------
+   Snapshot and join token endpoints
+   ------------------------- */
+
 app.get("/_hype_snapshot/:id", (req, res) => {
   const id = req.params.id;
   const html = renderRegionHtmlForId(id);
@@ -280,6 +501,10 @@ app.get("/_hype_join_token/:id", (req, res) => {
   const token = signJoinToken(id, 300);
   res.json({ ok: true, id, token });
 });
+
+/* -------------------------
+   Toggle item endpoint (POST - protected by CSRF)
+   ------------------------- */
 
 app.post("/items/:id/toggle", (req, res) => {
   const id = req.params.id;
@@ -597,6 +822,27 @@ httpServer.listen(PORT, () => {
   console.log("  - ws://<host>/_hype_live   (Hype live protocol)");
   console.log("  - ws://<host>/stocks/ws   (stocks protocol)");
   console.log("SSE endpoint: GET /stocks/sse");
+});
+
+/* -------------------------
+   Error handling (CSRF + generic)
+   ------------------------- */
+
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!err) return next();
+  // csurf throws an error with code 'EBADCSRFTOKEN' for invalid/missing tokens
+  if (err.code === "EBADCSRFTOKEN") {
+    res.status(403).json({ ok: false, error: "invalid csrf token" });
+    return;
+  }
+  console.error("Server error:", err && (err.stack || err.message || err));
+  // for HTML responses you might want to render a friendly page; keep JSON for API endpoints here:
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "internal server error" });
+  } else {
+    // headers already sent; delegate to default error handler
+    next(err);
+  }
 });
 
 /* -------------------------

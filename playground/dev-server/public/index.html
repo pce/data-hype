@@ -7,11 +7,11 @@
   <meta name="description" content="Hype playground examples (development). Examples assume the dev backend is running and prefer DSL JSON for CSP-friendly evaluation." />
   <!--
     Dev-friendly Content Security Policy (adjust for production):
-    - Keeps runtime import and websocket connections to same-origin.
-    - In production remove 'unsafe-inline' and restrict connect/script/style sources.
+    - Avoid inline scripts; use external modules under /static/js.
+    - In production restrict connect/script/style more tightly and remove remote hosts.
   -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' data:; script-src 'self' https:; connect-src 'self' ws: wss: http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:;" />
+        content="default-src 'self' data:; script-src 'self'; connect-src 'self' ws: wss: http: https:; style-src 'self' https:; img-src 'self' data: https:;" />
   <style>
     :root {
       --bg: #f8fafc;
@@ -56,6 +56,7 @@
 
         <div style="text-align:right">
           <a class="link-card" href="/reactive_counter.html" style="display:inline-block;min-width:160px;padding:8px 12px">Quick: Reactive counter</a>
+          <a class="link-card" href="/login.html" style="display:inline-block;min-width:120px;padding:8px 12px;margin-left:8px">Login example</a>
         </div>
       </div>
     </header>
@@ -169,26 +170,7 @@ pnpm run dev</pre>
     </footer>
   </div>
 
-  <script type="module">
-    // Progressive, non-blocking import of the optional Hype runtime.
-    // This keeps pages functional without the runtime and avoids eval/new Function usage.
-    (async function () {
-      try {
-        const path = '/static/js/hype.js';
-        const mod = await import(path).catch(() => null);
-        const hype = mod && (mod.hype || mod.default || mod) || null;
-        if (hype && typeof hype.init === 'function') {
-          try { hype.init(); } catch (e) { console.warn('hype.init() error', e); }
-          window.hypeModuleInitialized = true;
-          console.debug('Hype runtime initialized.');
-        } else if (mod) {
-          window.hypeModule = mod;
-        }
-      } catch (err) {
-        // Non-fatal in dev; examples include simulation fallback when appropriate.
-        console.debug('Hype dynamic import failed:', err);
-      }
-    })();
-  </script>
+  <!-- Load Hype runtime and helpers from external modules (no inline scripts) -->
+  <script type="module" src="/static/js/loader.js"></script>
 </body>
 </html>

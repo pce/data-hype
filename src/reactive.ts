@@ -609,7 +609,6 @@ export class ReactiveSystem {
 
         return JSON.parse(normalized);
       } catch (fallbackErr) {
-        // Provide a helpful error message while avoiding executing code
         throw new Error(
           `Failed to parse state as JSON. Original error: ${String(jsonErr)}; normalization error: ${String(fallbackErr)}. Use valid JSON for data-hype-state.`,
         );

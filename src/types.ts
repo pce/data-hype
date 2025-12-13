@@ -23,6 +23,8 @@ export interface PluginConfig {
   behavior?: boolean;
   /** Whether default debounce wiring should be enabled (default: true) */
   debounce?: boolean;
+  /** Attach built-in auth helpers plugin (default: true) */
+  auth?: boolean;
 }
 
 /**

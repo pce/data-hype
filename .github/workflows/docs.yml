@@ -21,59 +21,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (with pnpm cache)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
+      - name: Make dev.sh executable
+        run: chmod +x ./dev.sh
 
-      - name: Enable Corepack and ensure pnpm available
+      - name: Check Docker availability
         run: |
-          # Enable Corepack and try to prepare pnpm. If Corepack preparation fails,
-          # fall back to installing pnpm globally so it's available on PATH.
-          corepack enable
-          corepack prepare pnpm@latest --activate || true
-
-          # If pnpm is not available after corepack activation, install globally as a fallback.
-          if ! command -v pnpm >/dev/null 2>&1; then
-            echo "pnpm not found via corepack; installing global pnpm as fallback"
-            npm install -g pnpm@latest
-          fi
-
-          # Sanity checks: print version and path
-          pnpm --version
-          which pnpm
-
-      - name: Install dependencies
-        run: |
-          # Use frozen lockfile when present, otherwise fall back to plain install
-          if [ -f pnpm-lock.yaml ]; then
-            pnpm install --frozen-lockfile
+          echo "Checking docker availability..."
+          docker --version || (echo "docker not available on runner" && exit 1)
+          docker info || (echo "docker daemon not available" && exit 1)
+          # Check for docker compose (v2 plugin) but allow docker-compose fallback
+          if docker compose version >/dev/null 2>&1; then
+            docker compose version
           else
-            pnpm install
+            echo "docker compose plugin not found; checking docker-compose fallback"
+            docker-compose --version || true
           fi
 
-      - name: Generate JSDoc
+      - name: Build docs via dev.sh (Docker)
+        env:
+          CI: "true"
         run: |
-          pnpm exec jsdoc -c jsdoc.json -d docs-output
+          echo "Running: ./dev.sh docs"
+          ./dev.sh docs
 
-      - name: Create .nojekyll
-        run: touch docs-output/.nojekyll
+      - name: Verify docs-output
+        run: |
+          echo "Listing docs-output top-level:"
+          ls -la docs-output || (echo "docs-output not found" && exit 1)
+          echo "Checking for index.html"
+          if [ -f docs-output/index.html ]; then
+            echo "index.html present"
+          else
+            echo "Warning: index.html not found in docs-output"
+          fi
+          echo "Ensure .nojekyll exists (create if not)"
+          if [ ! -f docs-output/.nojekyll ]; then
+            touch docs-output/.nojekyll
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs-output
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

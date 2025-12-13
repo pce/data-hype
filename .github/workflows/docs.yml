@@ -21,18 +21,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (with pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Enable Corepack and ensure pnpm available
+        run: |
+          # Enable Corepack and try to prepare pnpm. If Corepack preparation fails,
+          # fall back to installing pnpm globally so it's available on PATH.
+          corepack enable
+          corepack prepare pnpm@latest --activate || true
+
+          # If pnpm is not available after corepack activation, install globally as a fallback.
+          if ! command -v pnpm >/dev/null 2>&1; then
+            echo "pnpm not found via corepack; installing global pnpm as fallback"
+            npm install -g pnpm@latest
+          fi
+
+          # Sanity checks: print version and path
+          pnpm --version
+          which pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          # Use frozen lockfile when present, otherwise fall back to plain install
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile
+          else
+            pnpm install
+          fi
 
       - name: Generate JSDoc
         run: |
-          npx jsdoc -c jsdoc.json -d docs-output
+          pnpm exec jsdoc -c jsdoc.json -d docs-output
 
       - name: Create .nojekyll
         run: touch docs-output/.nojekyll
@@ -55,3 +78,9 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Show Pages URL
+        if: always()
+        run: |
+          echo "Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          printf "Open the site: %s\n" "${{ steps.deployment.outputs.page_url }}"

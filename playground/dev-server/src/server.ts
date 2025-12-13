@@ -1,15 +1,20 @@
 /**
  * Dev server with static example pages, Hype Live WS protocol, Stocks WS, and SSE endpoints.
  *
- * Enhanced:
- *  - Per-request Content-Security-Policy with nonce
- *  - CSRF protection using cookie-based csurf
- *  - CSRF token endpoint: GET /csrf-token
- *  - Error handler for CSRF and other errors
+ * Enhanced for production-readiness:
+ *  - Helmet for secure headers (CSP still generated per-request to support nonces)
+ *  - HSTS header prepared for production (only applied when NODE_ENV === 'production')
+ *  - trust proxy when behind a reverse proxy (production)
+ *  - Origin validation for WS and SSE endpoints in production
+ *  - Rate limiting for login endpoint
+ *  - CSP report endpoint (/csp-report) to collect CSP violation reports
+ *  - Runtime warnings when default secrets are detected
  *
  * Notes:
- *  - This server is intended for local development only.
- *  - In production you should tighten auth, CORS and other protections and manage secrets appropriately.
+ *  - This server is intended for local development and demo usage. The production
+ *    bits here are conservative and meant to be used behind a proper reverse proxy
+ *    and TLS termination (nginx/Caddy/managed LB). Many of the protections are
+ *    enabled only when NODE_ENV === 'production'.
  */
 
 import express from "express";
@@ -24,6 +29,25 @@ import path from "path";
 import fs from "fs";
 import { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+
+/* -------------------------
+   Config / allowed origins
+   ------------------------- */
+
+const NODE_ENV = process.env.NODE_ENV || "development";
+const DEFAULT_ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+function getAllowedOrigins(): string[] {
+  // If ALLOWED_ORIGINS env var present, use it. Otherwise default to same-origin only (no cross-site).
+  if (DEFAULT_ALLOWED_ORIGINS.length > 0) return DEFAULT_ALLOWED_ORIGINS;
+  // If not configured, we allow "same-origin" by leaving the list empty and handling it specially.
+  return [];
+}
+const ALLOWED_ORIGINS = getAllowedOrigins();
 
 /* -------------------------
    Join token helpers (same as before)
@@ -97,7 +121,7 @@ function setAuthCookie(res: express.Response, token: string, ttlSec = 60 * 60) {
   const cookieOptions: any = {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: NODE_ENV === "production",
     maxAge: ttlSec * 1000,
     path: "/",
   };
@@ -279,16 +303,54 @@ function sendSseSnapshot(res: ServerResponse, symbols?: string[]) {
 
 const app = express();
 
-// Basic middleware
+// Use Helmet for common security headers. We turn off Helmet's CSP because
+// this app uses a per-request nonce-based CSP that is generated below.
+app.use(helmet({ contentSecurityPolicy: false }));
+app.disable("x-powered-by");
+
+// Allow CORS for development if desired, but the default is permissive here.
+// For production, prefer explicit ALLOWED_ORIGINS via env.
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Per-request CSP + other security headers middleware
-// NOTE: we no longer allow 'unsafe-inline'. Instead we generate a per-request nonce
-// and expose it via res.locals.cspNonce so server-rendered HTML can use the nonce
-// for inline style/script tags (preferred: move inline code into external modules).
+// If running behind a reverse proxy in production, trust the first proxy so that
+// req.secure and req.ip behave correctly.
+if (NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+  // Add HSTS header to enforce HTTPS in browsers (only in production)
+  app.use((_req, res, next) => {
+    // One year, include subdomains, preload directive recommended if you intend to submit to preload list
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    next();
+  });
+}
+
+/*
+  CSRF protection: use cookie-based csurf.
+  This will:
+    - Populate req.csrfToken() for handlers (GET can call it to provide token)
+    - Validate non-GET requests for the token sent via header or body/query param
+  The client should send the token in the 'X-CSRF-Token' header (or conventional names).
+*/
+const csrfProtection = csurf({
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: NODE_ENV === "production",
+    // path: '/', // default
+  },
+});
+
+// Apply CSRF protection globally for mutating requests. We register it as middleware so
+// that GETs still produce a token (req.csrfToken) and non-safe methods are checked.
+app.use(csrfProtection);
+
+/* -------------------------
+   Per-request CSP + other security headers middleware
+   NOTE: This runs after Helmet so we can still set the nonce-aware CSP
+   ------------------------- */
 app.use((req, res, next) => {
   try {
     // generate a per-request nonce (base64)
@@ -318,25 +380,62 @@ app.use((req, res, next) => {
   next();
 });
 
-/*
-  CSRF protection: use cookie-based csurf.
-  This will:
-    - Populate req.csrfToken() for handlers (GET can call it to provide token)
-    - Validate non-GET requests for the token sent via header or body/query param
-  The client should send the token in the 'X-CSRF-Token' header (or conventional names).
-*/
-const csrfProtection = csurf({
-  cookie: {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    // path: '/', // default
-  },
-});
+/* -------------------------
+   Helper: origin validation
+   ------------------------- */
 
-// Apply CSRF protection globally for mutating requests. We register it as middleware so
-// that GETs still produce a token (req.csrfToken) and non-safe methods are checked.
-app.use(csrfProtection);
+/**
+ * Determines whether the request origin is allowed.
+ * Behavior:
+ *  - In development (NODE_ENV !== 'production') this allows any origin to simplify local dev.
+ *  - In production, if ALLOWED_ORIGINS env var is set (comma-separated list) we only allow those.
+ *  - Otherwise we enforce same-origin: origin must match the Host header's scheme+host.
+ */
+function isOriginAllowed(req: IncomingMessage): boolean {
+  if (NODE_ENV !== "production") return true;
+
+  const originHeader = (req.headers.origin || "") as string;
+  const refererHeader = (req.headers.referer || "") as string;
+  const hostHeader = (req.headers.host || "") as string;
+
+  // If explicit allowed origins are configured, check against them
+  if (ALLOWED_ORIGINS.length > 0) {
+    const originsToCheck = [];
+    if (originHeader) originsToCheck.push(originHeader);
+    if (refererHeader) {
+      try {
+        const u = new URL(refererHeader);
+        originsToCheck.push(`${u.protocol}//${u.host}`);
+      } catch {}
+    }
+    for (const o of originsToCheck) {
+      if (ALLOWED_ORIGINS.includes(o)) return true;
+    }
+    return false;
+  }
+
+  // otherwise enforce same-origin: origin (if provided) must equal scheme+host
+  if (originHeader) {
+    try {
+      const originUrl = new URL(originHeader);
+      // Compare host (including port) to request host header
+      if (originUrl.host === hostHeader) return true;
+    } catch {}
+    return false;
+  }
+
+  // If no origin header present, fall back to referer check (some clients include referer instead)
+  if (refererHeader) {
+    try {
+      const refUrl = new URL(refererHeader);
+      if (refUrl.host === hostHeader) return true;
+    } catch {}
+    return false;
+  }
+
+  // If neither header is present, deny in production
+  return false;
+}
 
 /* -------------------------
    Static files and routes (unchanged behavior, with CSRF tokens available)
@@ -392,7 +491,22 @@ app.use((req, res, next) => {
 // Serve other static assets (images, js, css, etc.)
 app.use(express.static(publicDir, { extensions: ["html"] }));
 
-// Public API endpoints
+/* -------------------------
+   Rate limiter for auth endpoints
+   ------------------------- */
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 6, // limit each IP to 6 login requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many login attempts, try again later." },
+});
+
+/* -------------------------
+   Public API endpoints
+   ------------------------- */
+
 /* -------------------------
    Auth routes (demo)
    - POST /login  -> accepts simple credentials, issues auth cookie (JWT-like HMAC token)
@@ -402,7 +516,7 @@ app.use(express.static(publicDir, { extensions: ["html"] }));
    CSRF protection applies (client should fetch /csrf-token and send X-CSRF-Token for POSTs).
    ------------------------- */
 
-app.post("/login", (req, res) => {
+app.post("/login", loginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   // Demo credential check: accept any non-empty username, and optional simple password check.
   // Replace this with real user lookup and password verification (bcrypt/argon2) in production.
@@ -411,17 +525,9 @@ app.post("/login", (req, res) => {
     return;
   }
 
-  // Example: simple hard-coded check (for demo only)
-  // Accept any username, or enforce username === "demo" && password === "password" if you prefer stricter demo behavior.
-  // if (username !== "demo" || password !== "password") {
-  //   res.status(401).json({ ok: false, error: "invalid credentials" });
-  //   return;
-  // }
-
   const token = signAuthToken(username, 60 * 60); // 1 hour
   setAuthCookie(res, token, 60 * 60);
 
-  // Optionally return the token in response body for SPA clients (but cookie is the primary auth channel here)
   res.json({ ok: true, user: { id: username } });
 });
 
@@ -475,14 +581,28 @@ app.post("/api/jobs/:id/toggle-favorite", (req, res) => {
    ------------------------- */
 
 app.get("/csrf-token", (req, res) => {
-  // Return the token to the client so it can be used for subsequent mutating requests.
-  // The middleware also sets a cookie-based secret; the client should send the token in header 'X-CSRF-Token'.
   try {
     const token = (req as any).csrfToken();
     res.json({ ok: true, csrfToken: token });
   } catch (err) {
     res.status(500).json({ ok: false, error: "Unable to generate CSRF token" });
   }
+});
+
+/* -------------------------
+   CSP report endpoint (collects reports from browsers)
+   ------------------------- */
+
+app.post("/csp-report", express.json({ type: ["application/csp-report", "application/json"] }), (req, res) => {
+  // Report bodies differ between browsers; we log them and return 204 No Content.
+  try {
+    const report = req.body;
+    // In production you'd forward these to a logging/monitoring backend
+    console.warn("CSP violation report:", JSON.stringify(report));
+  } catch (e) {
+    // ignore parsing errors
+  }
+  res.status(204).end();
 });
 
 /* -------------------------
@@ -534,6 +654,12 @@ app.post("/items/:id/toggle", (req, res) => {
    ------------------------- */
 
 app.get("/stocks/sse", (req, res) => {
+  // In production, validate Origin/Referer for SSE endpoints to reduce CSRF surface
+  if (NODE_ENV === "production" && !isOriginAllowed(req)) {
+    res.status(403).json({ ok: false, error: "origin not allowed" });
+    return;
+  }
+
   // Set SSE headers
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
@@ -596,10 +722,23 @@ const wssStocks = new WebSocketServer({ noServer: true });
 /**
  * Route upgrade requests to the appropriate WebSocketServer based on the
  * request URL. This allows /_hype_live and /stocks/ws to coexist.
+ *
+ * We also validate Origin in production for upgrade requests to reduce
+ * cross-site misuse. Browsers include the Origin header for WebSocket upgrades.
  */
 httpServer.on("upgrade", function upgrade(request: IncomingMessage, socket, head) {
   const { url } = request;
   if (!url) {
+    socket.destroy();
+    return;
+  }
+
+  // Validate origin in production
+  if (NODE_ENV === "production" && !isOriginAllowed(request)) {
+    // politely refuse the upgrade
+    try {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    } catch {}
     socket.destroy();
     return;
   }
@@ -650,7 +789,7 @@ wssLive.on("connection", (ws: WebSocket, req: IncomingMessage) => {
           allowed = true;
         }
       } else {
-        if (process.env.NODE_ENV !== "production") allowed = true;
+        if (NODE_ENV !== "production") allowed = true;
       }
 
       if (!allowed) {
@@ -793,7 +932,7 @@ const stockUpdater = setInterval(() => {
    ------------------------- */
 
 httpServer.listen(PORT, () => {
-  console.log(`Dev server listening on http://localhost:${PORT}`);
+  console.log(`Server listening on http://localhost:${PORT}`);
   console.log(`Static examples served from: ${publicDir}`);
 
   try {
@@ -822,6 +961,17 @@ httpServer.listen(PORT, () => {
   console.log("  - ws://<host>/_hype_live   (Hype live protocol)");
   console.log("  - ws://<host>/stocks/ws   (stocks protocol)");
   console.log("SSE endpoint: GET /stocks/sse");
+
+  // Secrets warnings to prompt operator to provide strong secrets in production
+  if (JOIN_TOKEN_SECRET === "dev-secret-change-me") {
+    console.warn("WARNING: Using default JOIN_TOKEN_SECRET. Set HYPE_JOIN_SECRET in production!");
+  }
+  if (AUTH_TOKEN_SECRET === "dev-auth-secret-change-me") {
+    console.warn("WARNING: Using default AUTH_TOKEN_SECRET. Set AUTH_TOKEN_SECRET in production!");
+  }
+  if (NODE_ENV === "production" && ALLOWED_ORIGINS.length === 0) {
+    console.warn("INFO: Running in production but ALLOWED_ORIGINS is not set. Origin checks will enforce same-origin by default.");
+  }
 });
 
 /* -------------------------

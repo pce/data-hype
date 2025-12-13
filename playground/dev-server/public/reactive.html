@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hype Reactive Examples</title>
   <link rel="stylesheet" href="/tailwind.css">
-  <style>
+  <style nonce="%CSP_NONCE%">
     [data-hype-show] {
       transition: opacity 0.2s;
     }
@@ -437,7 +437,7 @@
   </div>
 
   <!-- Load Hype library -->
-  <script type="module">
+  <script nonce="%CSP_NONCE%" type="module">
     // KISS loader: try to import the runtime and call init(); otherwise install a tiny DOM fallback.
     (async () => {
       try {

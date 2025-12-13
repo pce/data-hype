@@ -6,7 +6,7 @@
   <title>Hype Reactive Examples</title>
   <link rel="stylesheet" href="/tailwind.css">
   <!-- Hype will be loaded as an ES module at the end of the document -->
-  <style>
+  <style nonce="%CSP_NONCE%">
     [data-hype-show] {
       transition: opacity 0.2s;
     }
@@ -98,7 +98,7 @@
   </div>
 
   <!-- Robust module import and debug logging -->
-  <script type="module">
+  <script nonce="%CSP_NONCE%" type="module">
     (async function () {
       try {
         console.log('Loading /static/js/hype.js ...');

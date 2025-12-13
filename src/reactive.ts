@@ -1024,6 +1024,14 @@ export class ReactiveSystem {
     if (!context) return;
 
     Object.assign(context.state, updates);
+
+    // Ensure watchers run immediately after setState so DOM updates are visible
+    // synchronously to callers/tests that expect immediate effects.
+    try {
+      this.flushPendingNow(context.element);
+    } catch {
+      /* ignore flush failures */
+    }
   }
 
   /**

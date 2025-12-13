@@ -10,15 +10,15 @@
       opacity: 0.6;
       pointer-events: none;
     }
-    
+
     .heart-icon {
       transition: transform 0.2s ease;
     }
-    
+
     .heart-icon.active {
       animation: heartbeat 0.3s ease;
     }
-    
+
     @keyframes heartbeat {
       0%, 100% { transform: scale(1); }
       25% { transform: scale(1.3); }
@@ -27,11 +27,17 @@
     }
   </style>
 </head>
-<body class="bg-gray-100 p-8">
+<body class="bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400">
   <div class="max-w-4xl mx-auto">
     <header class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 mb-2">Django Favorite Button Example</h1>
-      <p class="text-gray-600">Replacing verbose Django + JavaScript with Hype Reactive</p>
+        <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
+            Django Favorite
+        <span class="ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
+            Button Example
+        </span>
+        </h1>
+        <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
+      <!--<p class="text-gray-600 text-thin">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
     </header>
 
     <!-- Before: Traditional Django + JavaScript approach -->
@@ -44,12 +50,12 @@
         Before: Traditional Approach
       </h2>
       <p class="text-sm text-gray-600 mb-4">Requires Django template logic + custom JavaScript + manual DOM manipulation</p>
-      
+
       <div class="bg-gray-50 p-4 rounded border border-gray-200 mb-4">
         <p class="text-xs font-mono text-gray-500 mb-2">Django Template:</p>
         <pre class="text-xs overflow-x-auto"><code>{% if user.is_authenticated %}
-&lt;button 
-  class="btn btn-square btn-ghost favorite-btn" 
+&lt;button
+  class="btn btn-square btn-ghost favorite-btn"
   data-job-id="{{ job.id }}"
   data-favorited="{% if job in user.profile.favorite_jobs.all %}true{% else %}false{% endif %}"
 &gt;
@@ -65,8 +71,9 @@
       </div>
 
       <div class="bg-gray-50 p-4 rounded border border-gray-200">
-        <p class="text-xs font-mono text-gray-500 mb-2">JavaScript (50+ lines):</p>
-        <pre class="text-xs overflow-x-auto"><code>document.addEventListener('DOMContentLoaded', function() {
+        <p class="text-xs font-mono text-gray-500 mb-2">JavaScript (50+ lines, less with JQuery):</p>
+        <pre class="text-xs overflow-x-auto">/* Vanilla JS (original - verbose) */
+document.addEventListener('DOMContentLoaded', function() {
   const favoriteButtons = document.querySelectorAll('.favorite-btn');
   favoriteButtons.forEach(button => {
     button.addEventListener('click', function(e) {
@@ -74,7 +81,7 @@
       const jobId = this.getAttribute('data-job-id');
       const isFavorited = this.getAttribute('data-favorited') === 'true';
       this.disabled = true;
-      
+
       fetch(`/jobs/${jobId}/toggle-favorite/`, {
         method: 'POST',
         headers: { 'X-CSRFToken': getCookie('csrftoken') }
@@ -88,7 +95,60 @@
       });
     });
   });
-});</code></pre>
+});
+
+/* jQuery (concise) */
+$(function() {
+  $('.favorite-btn').on('click', function(e) {
+    e.preventDefault();
+    const $btn = $(this);
+    const jobId = $btn.data('job-id');
+    $btn.prop('disabled', true);
+
+    $.post(`/jobs/${jobId}/toggle-favorite/`, {_csrf: getCookie('csrftoken')}, function(data) {
+      $btn.data('favorited', data.is_favorited);
+      // Icon swap can be done by toggling classes or data attrs
+      $btn.prop('disabled', false);
+    }, 'json');
+  });
+});
+
+/* Tiny Hype syntactic sugar (explicit, small, readable)
+   Purpose: show an elegant helper that mirrors Hype declarative intent
+*/
+(function(){
+  function hBindFav(selector){
+    document.querySelectorAll(selector).forEach(btn=>{
+      btn.addEventListener('click', async function(e){
+        e.preventDefault();
+        // optimistic state update
+        const state = JSON.parse(btn.getAttribute('data-hype-state')||'{}');
+        state.favorited = !state.favorited;
+        btn.setAttribute('data-hype-state', JSON.stringify(state));
+
+        // perform the post (Hype would do $fetch / pub; this is a tiny sugar)
+        try {
+          await fetch(btn.getAttribute('data-hype-post'), {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+          });
+        } catch (err) {
+          // revert on error
+          state.favorited = !state.favorited;
+          btn.setAttribute('data-hype-state', JSON.stringify(state));
+          console.warn('Hype sugar: request failed', err);
+        }
+      });
+    });
+  }
+
+  // auto-bind on DOM ready (non-intrusive)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ()=>bindFav('.favorite-btn'));
+  } else {
+    bindFav('.favorite-btn');
+  }
+})();</pre>
       </div>
     </section>
 
@@ -101,11 +161,10 @@
         After: Hype Reactive
       </h2>
       <p class="text-sm text-gray-600 mb-4">Clean markup, no custom JavaScript needed!</p>
-      
+
       <div class="bg-gray-50 p-4 rounded border border-green-200">
         <p class="text-xs font-mono text-gray-500 mb-2">Django Template (simplified):</p>
         <pre class="text-xs overflow-x-auto"><code>&lt;button
-  &lt;button
     data-hype-state='{ "favorited": {{ "true" if job in user.profile.favorite_jobs.all else "false" }} }'
     data-hype-post="{% url 'toggle_job_favorite' job.id %}"
     data-hype-swap="none"
@@ -114,12 +173,12 @@
   &gt;
   &lt;!-- Outline heart - auto-shown when NOT favorited --&gt;
   &lt;svg data-hype-show="!favorited" class="size-[1.2em]"&gt;...&lt;/svg&gt;
-  
+
   &lt;!-- Filled heart - auto-shown when favorited --&gt;
   &lt;svg data-hype-show="favorited" class="size-[1.2em] text-red-500"&gt;...&lt;/svg&gt;
 &lt;/button&gt;</code></pre>
       </div>
-      
+
       <div class="mt-4 p-3 bg-green-50 border-l-4 border-green-500 rounded">
         <p class="text-sm text-green-800"><strong>Benefits:</strong></p>
         <ul class="text-sm text-green-700 mt-2 space-y-1 ml-4 list-disc">
@@ -152,7 +211,7 @@
             <h3 class="text-lg font-semibold text-gray-900">Senior Python Developer</h3>
             <p class="text-sm text-gray-600 mt-1">Remote • $120k-$150k • Posted 2 days ago</p>
           </div>
-          
+
           <button
             data-hype-state='{ "favorited": false }'
             data-hype-post="/api/jobs/123/toggle-favorite"
@@ -162,23 +221,23 @@
             title="Toggle favorite"
           >
             <!-- Outline heart -->
-            <svg 
-              data-hype-show="!favorited" 
-              class="size-6 heart-icon" 
-              xmlns="http://www.w3.org/2000/svg" 
+            <svg
+              data-hype-show="!favorited"
+              class="size-6 heart-icon"
+              xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
             >
               <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
                 <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
               </g>
             </svg>
-            
+
             <!-- Filled heart -->
-            <svg 
-              data-hype-show="favorited" 
-              class="size-6 text-red-500 heart-icon active" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
+            <svg
+              data-hype-show="favorited"
+              class="size-6 text-red-500 heart-icon active"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
               fill="currentColor"
             >
               <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
@@ -192,7 +251,7 @@
             <h3 class="text-lg font-semibold text-gray-900">Full Stack Engineer</h3>
             <p class="text-sm text-gray-600 mt-1">New York, NY • $130k-$160k • Posted 5 days ago</p>
           </div>
-          
+
           <button
             data-hype-state='{ "favorited": true }'
             data-hype-post="/api/jobs/456/toggle-favorite"
@@ -202,23 +261,23 @@
             title="Toggle favorite"
           >
             <!-- Outline heart -->
-            <svg 
-              data-hype-show="!favorited" 
-              class="size-6 heart-icon" 
-              xmlns="http://www.w3.org/2000/svg" 
+            <svg
+              data-hype-show="!favorited"
+              class="size-6 heart-icon"
+              xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
             >
               <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
                 <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
               </g>
             </svg>
-            
+
             <!-- Filled heart -->
-            <svg 
-              data-hype-show="favorited" 
-              class="size-6 text-red-500 heart-icon active" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
+            <svg
+              data-hype-show="favorited"
+              class="size-6 text-red-500 heart-icon active"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
               fill="currentColor"
             >
               <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
@@ -232,7 +291,7 @@
             <h3 class="text-lg font-semibold text-gray-900">Django Backend Developer</h3>
             <p class="text-sm text-gray-600 mt-1">San Francisco, CA • $140k-$180k • Posted 1 week ago</p>
           </div>
-          
+
           <button
             data-hype-state='{ "favorited": false }'
             data-hype-post="/api/jobs/789/toggle-favorite"
@@ -242,23 +301,23 @@
             title="Toggle favorite"
           >
             <!-- Outline heart -->
-            <svg 
-              data-hype-show="!favorited" 
-              class="size-6 heart-icon" 
-              xmlns="http://www.w3.org/2000/svg" 
+            <svg
+              data-hype-show="!favorited"
+              class="size-6 heart-icon"
+              xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
             >
               <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
                 <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
               </g>
             </svg>
-            
+
             <!-- Filled heart -->
-            <svg 
-              data-hype-show="favorited" 
-              class="size-6 text-red-500 heart-icon active" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
+            <svg
+              data-hype-show="favorited"
+              class="size-6 text-red-500 heart-icon active"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
               fill="currentColor"
             >
               <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
@@ -277,14 +336,14 @@
         </svg>
         Django Integration
       </h2>
-      
+
       <div class="space-y-4">
         <div>
           <h3 class="font-semibold text-blue-800 mb-2">1. Template (jobs/list.html)</h3>
           <pre class="bg-white p-3 rounded text-xs overflow-x-auto border border-blue-200"><code>{% for job in jobs %}
 &lt;div class="job-card"&gt;
   &lt;h3&gt;{{ job.title }}&lt;/h3&gt;
-  
+
   &lt;button
     data-hype-state='{ "favorited": {{ "true" if job in user.profile.favorite_jobs.all else "false" }} }'
     data-hype-post="{% url 'toggle_job_favorite' job.id %}"
@@ -309,14 +368,14 @@ from django.views.decorators.http import require_POST
 def toggle_job_favorite(request, job_id):
     job = get_object_or_404(Job, id=job_id)
     profile = request.user.profile
-    
+
     if job in profile.favorite_jobs.all():
         profile.favorite_jobs.remove(job)
         is_favorited = False
     else:
         profile.favorite_jobs.add(job)
         is_favorited = True
-    
+
     return JsonResponse({
         'success': True,
         'is_favorited': is_favorited
@@ -326,8 +385,8 @@ def toggle_job_favorite(request, job_id):
         <div>
           <h3 class="font-semibold text-blue-800 mb-2">3. URL (urls.py)</h3>
           <pre class="bg-white p-3 rounded text-xs overflow-x-auto border border-blue-200"><code>urlpatterns = [
-    path('jobs/&lt;int:job_id&gt;/toggle-favorite/', 
-         views.toggle_job_favorite, 
+    path('jobs/&lt;int:job_id&gt;/toggle-favorite/',
+         views.toggle_job_favorite,
          name='toggle_job_favorite'),
 ]</code></pre>
         </div>
@@ -373,7 +432,7 @@ def toggle_job_favorite(request, job_id):
             </svg>
             No Dependencies
           </h3>
-          <p class="text-sm text-gray-600">Pure JavaScript, no jQuery or Alpine needed</p>
+          <p class="text-sm text-gray-600">Pure JavaScript</p>
         </div>
         <div class="bg-white p-4 rounded-lg shadow-sm">
           <h3 class="font-semibold text-purple-800 mb-2"><svg xmlns="http://www.w3.org/2000/svg" class="inline w-4 h-4 mr-2 align-text-bottom" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>Progressive Enhancement</h3>
@@ -381,12 +440,16 @@ def toggle_job_favorite(request, job_id):
         </div>
       </div>
     </section>
-  </div>
 
-  <script type="module">
-    // Simulated Hype initialization
-    console.log('Hype Reactive Demo loaded!');
-    console.log('In production: import { hype } from \"hype\"; hype.init();');
-  </script>
+    <footer class="card text-center mt-6 mb-2" role="contentinfo">
+      Hype playground — dev • <span class="text-sm text-muted">examples</span>
+    </footer>
+
+
+    </div>
+
+
+<!-- Non-inline module loader that binds auth and attempts to load the Hype runtime -->
+<script type="module" src="/static/js/loader.js"></script>
 </body>
 </html>

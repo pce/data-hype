@@ -3,174 +3,151 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hype Playground — Dev</title>
-  <meta name="description" content="Hype playground examples (development). Examples assume the dev backend is running and prefer DSL JSON for CSP-friendly evaluation." />
-  <!--
-    Dev-friendly Content Security Policy (adjust for production):
-    - Avoid inline scripts; use external modules under /static/js.
-    - In production restrict connect/script/style more tightly and remove remote hosts.
-  -->
+  <title>Hype Playground</title> — Dev</title>
+  <meta name="description" content="Hype playground examples (development). Progressive, CSP-friendly examples using declarative templates." />
+
+  <!-- Dev CSP: module scripts & same-origin styles allowed. Adjust for production. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self' data:; script-src 'self'; connect-src 'self' ws: wss: http: https:; style-src 'self' https:; img-src 'self' data: https:;" />
-  <style nonce="%CSP_NONCE%">
-    :root {
-      --bg: #f8fafc;
-      --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --accent: #0366d6;
-      --radius: 10px;
-      --gap: 12px;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    }
-    .wrap { max-width: 1100px; margin: 28px auto; padding: 18px; }
-    .card { background: var(--card); border-radius: var(--radius); padding: 18px; box-shadow: 0 1px 2px rgba(2,6,23,0.06); margin-bottom: 16px; }
-    header .title { display:flex; gap:var(--gap); align-items:center; justify-content:space-between; flex-wrap:wrap; }
-    h1 { margin: 0; font-size: 1.25rem; }
-    p.lead { margin: 6px 0 0; color: var(--muted); }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:12px; }
-    .link-card { display:flex; flex-direction:column; justify-content:space-between; padding:14px; border-radius:8px; background:linear-gradient(180deg,rgba(3,102,214,0.03),transparent); border:1px solid rgba(3,102,214,0.06); color:inherit; text-decoration:none; min-height:84px; }
-    .link-card h3 { margin: 0; font-size: 1rem; }
-    .link-card p { margin: 6px 0 0; color: var(--muted); font-size: 0.92rem; }
-    .meta { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
-    code.inline { background: rgba(2,6,23,0.03); padding: 2px 6px; border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .9em; }
-    pre.cmd { background: #0b1220; color: #e6eef6; padding: 10px; border-radius:6px; overflow:auto; font-size:13px; margin-top:8px; }
-    footer { color:#94a3b8; text-align:center; margin-top:16px; font-size:13px; }
-    @media (max-width:520px) { .wrap { padding: 12px; } }
-  </style>
+
+  <!-- External styles only (no inline styles) -->
+  <link rel="stylesheet" href="/tailwind.css" />
+  <link rel="stylesheet" href="/static/css/index.css" />
 </head>
-<body>
-  <div class="wrap">
-    <header class="card" role="banner" aria-label="Hype Playground header">
-      <div class="title">
-        <div>
-          <h1>Hype — Playground (dev)</h1>
-          <p class="lead">Interactive examples that assume the dev backend is running (WebSocket / SSE / API). Examples prefer DSL JSON attributes for CSP compatibility.</p>
+
+<!--
+  Minimal declarative theme wiring using Hype:
+  - body state key: `dark` (boolean)
+  - `data-hype-on-click='["toggle","dark"]'` toggles the boolean
+  - `data-hype-class-...` applies classes on the body reactively
+-->
+<body
+  data-hype-state='{"dark":false}'
+  data-hype-class-earthone-dark='["get","dark"]'
+  data-hype-class-earthone-light='["!","get","dark"]'
+>
+  <div class="wrap container mx-auto px-6 py-8">
+    <header class="card mb-6" role="banner" aria-label="Hype Playground header">
+      <div class="flex items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <div class="logo rounded-lg flex items-center justify-center w-12 h-12 text-white font-bold bg-gradient-to-br from-orange-500 to-rose-500">H</div>
+          <div></div>
+            <h1 class="text-lg font-semibold m-0">Hype — Playground (dev)</h1>
+            <p class="text-sm text-muted m-0">Progressive, CSP-friendly examples using declarative templates.</p>
+          </div>
         </div>
 
-        <div style="text-align:right">
-          <a class="link-card" href="/reactive_counter.html" style="display:inline-block;min-width:160px;padding:8px 12px">Quick: Reactive counter</a>
-          <a class="link-card" href="/login.html" style="display:inline-block;min-width:120px;padding:8px 12px;margin-left:8px">Login example</a>
+        <div class="flex items-center gap-3">
+          <nav aria-label="Quick examples" class="flex gap-3">
+            <a class="link-card px-3 py-2 rounded text-sm" href="/reactive_counter.html">Reactive counter</a>
+            <a class="link-card px-3 py-2 rounded text-sm" href="/login.html">Login</a>
+          </nav>
+
+          <!-- Minimal declarative theme toggle (Hype will bind on runtime init) -->
+          <button
+            class="theme-button inline-grid place-items-center w-9 h-9 rounded"
+            aria-label="Toggle theme"
+            data-hype-on-click='["toggle","dark"]'
+            title="Toggle theme"
+          >🌗</button>
         </div>
       </div>
     </header>
 
-    <section class="card" aria-labelledby="examples">
-      <h2 id="examples" style="margin:0 0 8px 0">Examples</h2>
-      <p class="meta">Open any example — pages progressively enhance when the Hype runtime is available at <code class="inline">/static/js/hype.js</code>.</p>
+    <main></main>
+      <section class="card mb-6" aria-labelledby="examples">
+        <h2 id="examples" class="text-xl font-semibold mb-2">Examples</h2>
+        <p class="text-sm text-muted mb-4">Open any example — pages progressively enhance when the Hype runtime is available at <code class="inline">/static/js/hype.js</code>.</p>
 
-      <div class="grid" role="list" aria-label="Examples list">
-        <a class="link-card" role="listitem" href="/live.html">
-          <div>
-            <h3>Live — Stocks (WebSocket)</h3>
-            <p>WebSocket-driven live ticker. Client attempts <code class="inline">/_hype_live</code> first and falls back when necessary.</p>
-          </div>
-          <div class="meta">WebSocket live demo</div>
-        </a>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <a class="link-card p-4 rounded" href="/live.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Live — Stocks (WebSocket)</h3>
+            <p class="text-sm text-muted m-0 mt-2">WebSocket-driven live ticker (/_hype_live).</p>
+          </a>
 
-        <a class="link-card" role="listitem" href="/sse.html">
-          <div>
-            <h3>SSE — Stocks</h3>
-            <p>Server-Sent Events demo connecting to <code class="inline">/stocks/sse</code>. Use simulate fallback if backend not present.</p>
-          </div>
-          <div class="meta">SSE demo</div>
-        </a>
+          <a class="link-card p-4 rounded" href="/sse.html" role="listitem">
+            <h3 class="font-bold text-base m-0">SSE — Stocks</h3>
+            <p class="text-sm text-muted m-0 mt-2">Server-Sent Events demo (<code class="inline">/stocks/sse</code>).</p>
+          </a>
 
-        <a class="link-card" role="listitem" href="/reactive.html">
-          <div>
-            <h3>Reactive — Examples</h3>
-            <p>Showcases state, conditional show, classes, binds and forms using DSL JSON expressions.</p>
-          </div>
-          <div class="meta">state & bind</div>
-        </a>
+          <a class="link-card p-4 rounded" href="/reactive.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Reactive — Examples</h3>
+            <p class="text-sm text-muted m-0 mt-2">State, show, classes and binds using DSL JSON.</p>
+          </a>
 
-        <a class="link-card" role="listitem" href="/pubsub.html">
-          <div>
-            <h3>Pub/Sub demo</h3>
-            <p>Demonstrates the Hype pubsub plugin and a DOM CustomEvent bridge so the page works without the runtime.</p>
-          </div>
-          <div class="meta">pub/sub</div>
-        </a>
+          <a class="link-card p-4 rounded" href="/pubsub.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Pub/Sub demo</h3>
+            <p class="text-sm text-muted m-0 mt-2">Hype pubsub and DOM CustomEvent bridge.</p>
+          </a>
 
-        <a class="link-card" role="listitem" href="/django.html">
-          <div>
-            <h3>Django integration</h3>
-            <p>Example markup for progressive enhancement in server frameworks (optimistic UI & built-in CSRF handling).</p>
-          </div>
-          <div class="meta">server templates</div>
-        </a>
+          <a class="link-card p-4 rounded" href="/django.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Django integration</h3>
+            <p class="text-sm text-muted m-0 mt-2">Server templates & optimistic UI examples.</p>
+          </a>
 
-        <a class="link-card" role="listitem" href="/reactive_counter.html">
-          <div>
-            <h3>Reactive Counter</h3>
-            <p>Minimal example showing DSL JSON handlers and data binding. Useful as a starting point.</p>
-          </div>
-          <div class="meta">minimal init</div>
-        </a>
-      </div>
-    </section>
+          <a class="link-card p-4 rounded" href="/reactive_counter.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Reactive Counter</h3>
+            <p class="text-sm text-muted m-0 mt-2">Minimal starter showing DSL handlers & binds.</p>
+          </a>
+        </div>
+      </section>
 
-    <section class="card" aria-labelledby="endpoints">
-      <h2 id="endpoints" style="margin:0 0 8px 0">Dev server endpoints</h2>
-      <ul class="meta" style="margin:8px 0 0 18px; padding-left:18px;">
-        <li><code class="inline">GET /</code> — this index page</li>
-        <li><code class="inline">GET /api/items</code> — JSON snapshot of demo items</li>
-        <li><code class="inline">GET /_hype_snapshot/:id</code> — HTML fragment for a region</li>
-        <li><code class="inline">GET /_hype_join_token/:id</code> — short-lived join token for WebSocket joins (dev)</li>
-        <li><code class="inline">POST /items/:id/toggle</code> — toggle an item's state (form or XHR)</li>
-        <li><code class="inline">WS /_hype_live</code> — preferred WebSocket endpoint for live protocol</li>
-        <li><code class="inline">GET /stocks/sse</code> — SSE endpoint used by the SSE examples</li>
-      </ul>
+      <section class="card mb-6" aria-labelledby="endpoints">
+        <h2 id="endpoints" class="text-xl font-semibold mb-2">Dev server endpoints</h2>
+        <ul class="text-sm text-muted list-disc pl-6">
+          <li><code class="inline">GET /</code> — this index page</li>
+          <li><code class="inline">GET /api/items</code> — JSON snapshot of demo items</li>
+          <li><code class="inline">GET /_hype_snapshot/:id</code> — HTML fragment for a region</li>
+          <li><code class="inline">GET /_hype_join_token/:id</code> — short-lived join token for WebSocket joins (dev)</li>
+          <li><code class="inline">POST /items/:id/toggle</code> — toggle an item's state (form or XHR)</li>
+          <li><code class="inline">WS /_hype_live</code> — preferred WebSocket endpoint for live protocol</li>
+          <li><code class="inline">GET /stocks/sse</code> — SSE endpoint used by the SSE examples</li>
+        </ul>
 
-      <div style="margin-top:12px;">
-        <strong>Run dev server</strong>
-        <pre class="cmd">cd hype/playground/dev-server
+        <div class="mt-4">
+          <strong>Run dev server</strong</strong>>
+          <pre class="cmd mt-2">cd hype/playground/dev-server
 pnpm install
 pnpm run dev</pre>
 
-        <p class="meta" style="margin-top:8px;">When the dev server runs, the public folder is served and the live endpoints listed above are available. Examples assume the backend is running; each example will fall back to simulation if the server is unreachable.</p>
-      </div>
-    </section>
+          <p class="text-sm text-muted mt-2">When the dev server runs it serves the public folder. Examples will progressively enhance when the runtime is present.</p>
+        </div>
+      </section>
 
-    <section class="card" aria-labelledby="dsl">
-      <h2 id="dsl" style="margin:0 0 8px 0">DSL JSON — CSP-friendly examples</h2>
-      <p class="meta">Prefer DSL JSON attributes. The runtime parses JSON and evaluates via a safe interpreter (no eval/new Function), making this suitable for restrictive CSPs.</p>
+      <section class="card mb-6" aria-labelledby="dsl">
+        <h2 id="dsl" class="text-xl font-semibold mb-2">DSL JSON — CSP-friendly examples</h2>
+        <p class="text-sm text-muted mb-4">Prefer DSL JSON attributes. The runtime parses JSON and evaluates via a safe interpreter (no eval/new Function).</p>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-        <div class="card" style="padding:12px">
-          <h3 style="margin:0 0 8px 0">Toggle</h3>
-          <p class="meta" style="margin:0 0 8px 0">Toggle state declaratively:</p>
-          <pre class="cmd"><code>&lt;div data-hype-state='{"open":false}'&gt;
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="card p-4">
+            <h3 class="font-semibold">Toggle</h3>
+            <p class="text-sm text-muted">Toggle state declaratively:</p>
+            <pre class="cmd mt-2"><code>&lt;div data-hype-state='{"open":false}'&gt;
   &lt;button data-hype-on-click='["toggle","open"]'&gt;Toggle&lt;/button&gt;
   &lt;div data-hype-show="open"&gt;Shown when open&lt;/div&gt;
 &lt;/div&gt;</code></pre>
-        </div>
+          </div>
 
-        <div class="card" style="padding:12px">
-          <h3 style="margin:0 0 8px 0">Optimistic server sync</h3>
-          <p class="meta" style="margin:0 0 8px 0">Optimistic toggle plus server fetch (assumes backend endpoint exists):</p>
-          <pre class="cmd"><code>&lt;button
+          <div class="card p-4">
+            <h3 class="font-semibold">Optimistic server sync</h3>
+            <p class="text-sm text-muted">Optimistic toggle + server fetch (assumes backend):</p>
+            <pre class="cmd mt-2"><code>&lt;button
   data-hype-state='{"favorited":false,"syncing":false}'
   data-hype-post="/api/jobs/123/toggle-favorite"
   data-hype-swap="none"
   data-hype-on-click='["seq",["toggle","favorited"],["set","syncing",true],["pub","$fetch",null]]'
 &gt;Favorite&lt;/button&gt;</code></pre>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
 
-    <footer class="card" role="contentinfo">
-      Hype playground — dev • <span class="meta">examples assume backend endpoints exist; tighten CSP and origins for production</span>
+    <footer class="card text-center mt-6" role="contentinfo">
+      Hype playground — dev • <span class="text-sm text-muted">examples assume backend endpoints exist; tighten CSP and origins for production</span>
     </footer>
   </div>
 
-  <!-- Load Hype runtime and helpers from external modules (no inline scripts) -->
+  <!-- Non-inline module loader that binds auth and attempts to load the Hype runtime -->
   <script type="module" src="/static/js/loader.js"></script>
 </body>
 </html>

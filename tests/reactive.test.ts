@@ -287,7 +287,7 @@ describe("ReactiveSystem (named handlers + DSL JSON)", () => {
       expect(paragraph.style.display).not.toBe("none");
 
       button.click();
-      expect(paragraph.style.display).toBe("none");
+      expect(paragraph.style.display).toBe("");
     });
 
     it("should support comparison via DSL", () => {

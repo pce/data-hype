@@ -43,10 +43,30 @@ interface BehaviorImpl {
  */
 export function createBehaviorRegistry(defaultAction?: (el: HTMLElement, spec: BehaviorSpec) => void) {
   const registry = new Map<string, BehaviorImpl>();
+  // Optional Hype instance reference that behaviors can prefer over global hooks.
+  // Use `setHypeInstance(h)` to inject the Hype instance into this registry so
+  // behavior implementations can call instance helpers (e.g. trigger, templateClone).
+  let hypeInstanceRef: any = null;
+  function setHypeInstance(h: any) {
+    hypeInstanceRef = h;
+  }
 
   const action =
     defaultAction ||
     ((el: HTMLElement, _spec?: BehaviorSpec) => {
+      // If a Hype instance has been provided, prefer calling its trigger API (best-effort).
+      if (hypeInstanceRef && typeof hypeInstanceRef.trigger === "function") {
+        try {
+          // ignore returned promise - behavior trigger should be best-effort
+          hypeInstanceRef.trigger(el).catch(() => {
+            /* swallow */
+          });
+        } catch {
+          /* swallow */
+        }
+        // allow implementations to rely on the Hype trigger; also dispatch event for non-Hype listeners
+      }
+
       // best-effort: dispatch a custom event that Hype or other consumers can catch
       const eventObj = new CustomEvent("hype:behavior-trigger", { detail: { el, spec: _spec }, bubbles: true, composed: true });
       el.dispatchEvent(eventObj);
@@ -62,6 +82,27 @@ export function createBehaviorRegistry(defaultAction?: (el: HTMLElement, spec: B
       };
       el.addEventListener("click", handler);
       return () => el.removeEventListener("click", handler);
+    },
+  });
+
+  // interval behavior - run an action on a schedule (ms)
+  registry.set("interval", {
+    attach(el: HTMLElement, spec: BehaviorSpec) {
+      const ms = Number(spec.param || "1000") || 1000;
+      const id = window.setInterval(() => {
+        try {
+          action(el, spec);
+        } catch {
+          /* ignore action errors */
+        }
+      }, ms);
+      return () => {
+        try {
+          clearInterval(id);
+        } catch {
+          /* ignore clear errors */
+        }
+      };
     },
   });
 
@@ -169,20 +210,389 @@ export function createBehaviorRegistry(defaultAction?: (el: HTMLElement, spec: B
     },
   });
 
-  // interval behavior - param required (ms)
-  registry.set("interval", {
-    attach(el: HTMLElement, spec: BehaviorSpec) {
-      const ms = Number(spec.param || "1000") || 1000;
-      const id = setInterval(() => {
-        action(el, spec);
-      }, ms);
-      return () => clearInterval(id);
+  // snap behavior - useful for scroll-snap containers: sets --active-index and supports next/prev controls
+  //
+  // Usage examples:
+  //  - add `data-hype-trigger="snap"` on a scroll container whose immediate children are snap points
+  //  - optionally configure `data-hype-root` to target a different IntersectionObserver root
+  //  - add controls like `<button data-hype-snap-next data-hype-snap-target="#myContainer">Next</button>`
+  //    or `<button data-hype-snap-prev data-hype-snap-target="#myContainer">Prev</button>`
+  //
+  // This behavior will:
+  //  - observe children and compute the most visible child, set CSS var `--active-index` and `data-hype-active-index`
+  //  - support next/prev controls that scroll to the next/previous snap child
+  registry.set("snap", {
+    attach(container: HTMLElement, _spec: BehaviorSpec) {
+      // identify children that are snap items (immediate element children)
+      const children = Array.from(container.children).filter((c) => c instanceof HTMLElement) as HTMLElement[];
+      if (!children.length) return () => {};
+
+      // resolve root similar to revealed behavior
+      const rootAttr = container.getAttribute("data-hype-root");
+      let root: Element | null = null;
+      if (rootAttr === "this") {
+        root = container;
+      } else if (rootAttr) {
+        try {
+          const q = document.querySelector(rootAttr);
+          if (q instanceof Element) root = q;
+        } catch {
+          root = null;
+        }
+      } else {
+        const scrollable = findScrollableAncestor(container);
+        root = scrollable instanceof Window ? null : (scrollable as Element);
+      }
+
+      // observer options: use a reasonable threshold array to measure visibility
+      const opts: IntersectionObserverInit = {
+        root,
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      };
+
+      let activeIndex = Number(container.dataset.hypeActiveIndex || 0);
+
+      const updateActive = (index: number) => {
+        if (index === activeIndex) return;
+        activeIndex = index;
+        try {
+          container.style.setProperty("--active-index", String(index));
+        } catch {
+          /* ignore */
+        }
+        try {
+          container.dataset.hypeActiveIndex = String(index);
+        } catch {
+          /* ignore */
+        }
+
+        // Dispatch a small, semantic event so consumers can react (and to allow
+        // Hype-specific wiring to update stateful UI without polling). Event
+        // detail contains the new active index.
+        try {
+          const ev = new CustomEvent("hype:snap-change", { detail: { index }, bubbles: true, composed: true });
+          container.dispatchEvent(ev);
+        } catch {
+          /* ignore */
+        }
+
+        // Convenience: update any declarative display elements that opt-in via
+        // `data-hype-snap-display`. If an element has `data-hype-snap-target`,
+        // only update it when the target matches this container.
+        try {
+          document.querySelectorAll("[data-hype-snap-display]").forEach((d) => {
+            try {
+              const displayEl = d as HTMLElement;
+              const targetSel = displayEl.getAttribute("data-hype-snap-target");
+              if (!targetSel) {
+                displayEl.textContent = String(index);
+                return;
+              }
+              // resolve selector and compare to this container
+              let resolved: Element | null = null;
+              try {
+                resolved = document.querySelector(targetSel);
+              } catch {
+                resolved = null;
+              }
+              if (resolved === container) {
+                displayEl.textContent = String(index);
+              }
+            } catch {
+              /* ignore per-item failures */
+            }
+          });
+        } catch {
+          /* ignore update errors */
+        }
+      };
+
+      const io = new IntersectionObserver((entries) => {
+        // compute the child with the greatest intersectionRatio
+        const scores = new Map<HTMLElement, number>();
+        for (const entry of entries) {
+          const target = entry.target as HTMLElement;
+          scores.set(target, entry.intersectionRatio || 0);
+        }
+        // include children that might not be in the current entries
+        let bestIndex = activeIndex;
+        let bestScore = -1;
+        children.forEach((child, idx) => {
+          const s = scores.has(child) ? (scores.get(child) as number) : 0;
+          if (s > bestScore) {
+            bestScore = s;
+            bestIndex = idx;
+          }
+        });
+        updateActive(bestIndex);
+      }, opts);
+
+      // observe all children
+      children.forEach((c) => io.observe(c));
+
+      // next/prev controls: listen for clicks on document for elements carrying the control attributes
+      const onDocClick = (ev: Event) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        const ctrl = t.closest("[data-hype-snap-next],[data-hype-snap-prev]") as HTMLElement | null;
+        if (!ctrl) return;
+        const targetSelector = ctrl.getAttribute("data-hype-snap-target");
+        if (targetSelector) {
+          // control targets a specific container
+          const targetEl = document.querySelector(targetSelector);
+          if (targetEl !== container) return;
+        } else {
+          // no explicit target: ensure control is inside container or document-level controls are allowed
+          if (!container.contains(ctrl)) return;
+        }
+        const dir = ctrl.hasAttribute("data-hype-snap-next") ? 1 : -1;
+        const cur = Number(container.dataset.hypeActiveIndex || 0);
+        const nextIdx = Math.max(0, Math.min(children.length - 1, cur + dir));
+        const nextEl = children[nextIdx];
+        if (nextEl && typeof (nextEl as HTMLElement).scrollIntoView === "function") {
+          try {
+            nextEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" } as ScrollIntoViewOptions);
+          } catch {
+            try {
+              nextEl.scrollIntoView();
+            } catch {
+              /* ignore */
+            }
+          }
+          updateActive(nextIdx);
+        }
+      };
+
+      document.addEventListener("click", onDocClick);
+
+      // cleanup
+      return () => {
+        try {
+          io.disconnect();
+        } catch {
+          /* ignore */
+        }
+        try {
+          document.removeEventListener("click", onDocClick);
+        } catch {
+          /* ignore */
+        }
+      };
     },
   });
 
-  // scroll-bottom behavior - fires when container scrolled near bottom
-  registry.set("scroll-bottom", {
+  // infinite behavior - sentinel-driven infinite loader using templateClone and a tiny flyweight pool
+  //
+  // Usage:
+  //  - add `data-hype-trigger="infinite:8"` (param = items per page)
+  //  - configure attributes on the sentinel:
+  //      data-hype-get="/api/images?page={page}"   (optional; if absent, synthetic placeholder items are created)
+  //      data-hype-target="#imageGrid"
+  //      data-hype-template="#photo-tpl"
+  //      data-hype-root-margin="0px 0px 400px 0px"
+  //
+  // The behavior will:
+  //  - observe the sentinel element (the element carrying the trigger)
+  //  - when visible, fetch JSON or HTML from `data-hype-get` (if provided)
+  //  - use a template (via `window.hype.templateClone` if available, otherwise native cloning) to render items
+  //  - maintain a small flyweight pool to reduce DOM churn when possible
+  registry.set("infinite", {
     attach(el: HTMLElement, spec: BehaviorSpec) {
+      const perPage = Number(spec.param || el.getAttribute("data-hype-per-page") || "8") || 8;
+      const urlTemplate = el.getAttribute("data-hype-get") || "";
+      const targetSelector = el.getAttribute("data-hype-target") || el.getAttribute("data-target") || null;
+      const tplSelector = el.getAttribute("data-hype-template") || el.getAttribute("data-template") || null;
+      const rootMargin = el.getAttribute("data-hype-root-margin") || "0px 0px 400px 0px";
+      const poolSize = Math.max(0, Number(el.getAttribute("data-hype-pool-size") || "12") || 12);
+
+      let page = Number(el.getAttribute("data-hype-start-page") || "1") || 1;
+      let loading = false;
+      let ended = false;
+
+      // small flyweight pool of detached nodes created from template for reuse
+      const pool: HTMLElement[] = [];
+
+      function makeFromTemplate(data: any): HTMLElement | null {
+        try {
+          // prefer an injected Hype instance helper (templateClone) if provided via setHypeInstance()
+          const globalTplClone =
+            typeof hypeInstanceRef === "object" && typeof (hypeInstanceRef as any).templateClone === "function"
+              ? (hypeInstanceRef as any).templateClone.bind(hypeInstanceRef)
+              : null;
+          if (globalTplClone && tplSelector) {
+            const node = globalTplClone(tplSelector, data);
+            if (node instanceof HTMLElement) return node as HTMLElement;
+            if (node && node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+              return (node as DocumentFragment).firstElementChild as HTMLElement | null;
+            }
+          }
+
+          // fallback: DOM cloning from template element
+          if (tplSelector) {
+            const tpl = document.querySelector(tplSelector) as HTMLTemplateElement | null;
+            if (tpl && tpl.content) {
+              const frag = tpl.content.cloneNode(true) as DocumentFragment;
+              // simple interpolation for attributes and text nodes: {{key}}
+              const interpolate = (str: string) =>
+                String(str).replace(/\{\{\s*([\w.$]+)\s*\}\}/g, (_, key) => {
+                  const parts = key.split(".");
+                  let v: any = data;
+                  for (const p of parts) {
+                    if (v == null) return "";
+                    v = v[p];
+                  }
+                  return v == null ? "" : String(v);
+                });
+              const walker = (node: Node) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                  node.textContent = interpolate(node.textContent || "");
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                  const ae = node as Element;
+                  for (const at of Array.from(ae.attributes || [])) {
+                    const nv = interpolate(at.value);
+                    if (nv !== at.value) ae.setAttribute(at.name, nv);
+                  }
+                  for (const c of Array.from(ae.childNodes || [])) walker(c);
+                }
+              };
+              for (const cn of Array.from(frag.childNodes)) walker(cn);
+              return frag.firstElementChild as HTMLElement | null;
+            }
+          }
+
+          // last resort: create a minimal element if data has src/alt
+          if (data && (data.src || data.id)) {
+            const li = document.createElement("li");
+            li.className = "item";
+            const img = document.createElement("img");
+            img.src = data.src || `https://picsum.photos/id/${data.id}/800/533`;
+            img.alt = data.alt || `Image ${data.id || ""}`;
+            li.appendChild(img);
+            return li;
+          }
+
+          return null;
+        } catch (err) {
+          // swallow template errors and return null
+          return null;
+        }
+      }
+
+      function applyDataToNode(node: HTMLElement, data: any) {
+        // try to update common image attributes quickly
+        try {
+          const img = node.querySelector("img");
+          if (img && data) {
+            if (data.src) img.setAttribute("src", String(data.src));
+            if (data.alt) img.setAttribute("alt", String(data.alt));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      function appendItems(items: any[]) {
+        const target = targetSelector ? document.querySelector(targetSelector) : el.parentElement || document.body;
+        if (!target) return;
+        const frag = document.createDocumentFragment();
+
+        for (const it of items) {
+          let node: HTMLElement | null = null;
+          if (pool.length > 0) {
+            node = pool.pop() as HTMLElement;
+            applyDataToNode(node, it);
+          } else {
+            node = makeFromTemplate(it);
+          }
+          if (node) frag.appendChild(node);
+        }
+
+        target.appendChild(frag);
+
+        // warm the pool if a template exists and pool is not yet full
+        if (tplSelector) {
+          const tpl = document.querySelector(tplSelector) as HTMLTemplateElement | null;
+          while (tpl && pool.length < poolSize && tpl.content && tpl.content.firstElementChild) {
+            const clone = tpl.content.firstElementChild.cloneNode(true) as HTMLElement;
+            // clear any content for reuse
+            try {
+              const img = clone.querySelector("img");
+              if (img) {
+                img.removeAttribute("src");
+                img.removeAttribute("alt");
+              }
+            } catch {}
+            pool.push(clone);
+          }
+        }
+      }
+
+      async function doLoad() {
+        if (loading || ended) return;
+        loading = true;
+        try {
+          if (urlTemplate && urlTemplate.includes("{page}")) {
+            const url = urlTemplate.replace("{page}", String(page));
+            const res = await fetch(url, { credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest" } });
+            if (!res.ok) {
+              // consider ending on non-OK to avoid spamming
+              ended = true;
+              return;
+            }
+            const ct = (res.headers.get("Content-Type") || "").toLowerCase();
+            if (ct.includes("application/json")) {
+              const json = await res.json();
+              if (Array.isArray(json)) appendItems(json);
+              else if (json && Array.isArray(json.items)) appendItems(json.items);
+              else {
+                // unknown shape: attempt to render nothing and end
+                ended = true;
+              }
+            } else {
+              // HTML fragment - insert directly into target
+              const html = await res.text();
+              const target = targetSelector ? document.querySelector(targetSelector) : el.parentElement || document.body;
+              if (target) {
+                const frag = document.createRange().createContextualFragment(html);
+                target.appendChild(frag);
+              }
+            }
+          } else {
+            // fallback synthetic generation
+            const base = (page - 1) * perPage;
+            const ids = Array.from({ length: perPage }, (_, i) => 101 + ((base + i) % 100));
+            const arr = ids.map((id) => ({ id, src: `https://picsum.photos/id/${id}/800/533`, alt: `Image ${id}` }));
+            appendItems(arr);
+          }
+          page++;
+        } catch (err) {
+          // network/render error -> end the sequence to avoid retries; consumer can add retry behavior
+          ended = true;
+        } finally {
+          loading = false;
+        }
+      }
+
+      // Observe sentinel
+      let io: IntersectionObserver | null = null;
+      if ("IntersectionObserver" in window) {
+        io = new IntersectionObserver(
+          (entries) => {
+            for (const ent of entries) {
+              if (ent.isIntersecting) {
+                doLoad();
+              }
+            }
+          },
+          { root: null, rootMargin },
+        );
+        io.observe(el);
+      } else {
+        // immediate fallback
+        doLoad();
+      }
+
+      //: HTMLElement, spec: BehaviorSpec) {
       const threshold = Number(spec.param || "200") || 200;
       // find scrollable ancestor or window
       const scrollable = findScrollableAncestor(el) || window;
@@ -250,7 +660,7 @@ export function createBehaviorRegistry(defaultAction?: (el: HTMLElement, spec: B
     return registry.get(name);
   }
 
-  return { register, get, action };
+  return { register, get, action, setHypeInstance };
 }
 
 /* -------------------------------
@@ -570,6 +980,16 @@ export const behaviorPlugin = {
         el.dispatchEvent(ev);
       }
     });
+
+    // Inject the Hype instance into the registry so behaviors can prefer the instance API
+    // (e.g. using `hype.templateClone`) rather than relying on globals like window.hype.
+    try {
+      if (typeof (registry as any).setHypeInstance === "function") {
+        (registry as any).setHypeInstance(hypeInstance);
+      }
+    } catch {
+      /* ignore injection errors */
+    }
 
     // attach behavior wiring and debounce wiring
     const cleanupBeh = attachBehaviorsFromAttribute(document.body, registry, hypeInstance, triggerAttr);

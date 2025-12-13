@@ -9,7 +9,7 @@ import type {
   ResponseErrorDetail,
   RequestContext,
   ResponseContext,
-} from './types';
+} from "./types";
 
 /**
  * Event system for Hype
@@ -33,13 +33,29 @@ export class EventSystem {
    * Dispatch a custom event on an element
    * Returns true if the event was not cancelled
    */
-  dispatch<T extends HypeEventDetail>(
-    element: HTMLElement,
-    eventName: HypeEventName,
-    detail: T
-  ): boolean {
+  dispatch<T extends HypeEventDetail>(element: HTMLElement, eventName: HypeEventName, detail: T): boolean {
     if (this.debug) {
-      console.log(`[Hype] Dispatching ${eventName}`, detail);
+      // Produce a compact, deterministic summary to avoid logging full DOM trees.
+      // Many event detail objects include a `context.element` which, when logged
+      // directly, can expand into enormous DOM prints in tests or consoles.
+      // Here we replace that element reference with a small summary (tag, id, classes, dataset).
+      const dAny = detail as any;
+      const candidateEl = (dAny && dAny.context && dAny.context.element) || element;
+      let elSummary: any = undefined;
+      if (candidateEl && candidateEl.tagName) {
+        elSummary = {
+          tagName: candidateEl.tagName,
+          id: candidateEl.id || undefined,
+          className: candidateEl.className || undefined,
+          dataset: candidateEl.dataset ? { ...candidateEl.dataset } : undefined,
+        };
+      } else {
+        elSummary = candidateEl;
+      }
+      const safeDetail = Object.assign({}, dAny, {
+        context: dAny && dAny.context ? Object.assign({}, dAny.context, { element: elSummary }) : dAny.context,
+      });
+      console.log(`[Hype] Dispatching ${eventName}`, safeDetail);
     }
 
     const event = new CustomEvent(eventName, {
@@ -64,7 +80,7 @@ export class EventSystem {
       },
     };
 
-    const notPrevented = this.dispatch(ctx.element, 'hype:before-request', detail);
+    const notPrevented = this.dispatch(ctx.element, "hype:before-request", detail);
 
     if (!notPrevented || cancelled) {
       return null;
@@ -87,7 +103,7 @@ export class EventSystem {
       },
     };
 
-    const notPrevented = this.dispatch(ctx.element, 'hype:before-swap', detail);
+    const notPrevented = this.dispatch(ctx.element, "hype:before-swap", detail);
 
     if (!notPrevented || cancelled) {
       return null;
@@ -105,7 +121,7 @@ export class EventSystem {
       target,
     };
 
-    this.dispatch(ctx.element, 'hype:after-swap', detail);
+    this.dispatch(ctx.element, "hype:after-swap", detail);
   }
 
   /**
@@ -117,7 +133,7 @@ export class EventSystem {
       target,
     };
 
-    this.dispatch(ctx.element, 'hype:after-settle', detail);
+    this.dispatch(ctx.element, "hype:after-settle", detail);
   }
 
   /**
@@ -129,7 +145,7 @@ export class EventSystem {
       error,
     };
 
-    this.dispatch(ctx.element, 'hype:request-error', detail);
+    this.dispatch(ctx.element, "hype:request-error", detail);
   }
 
   /**
@@ -141,7 +157,7 @@ export class EventSystem {
       error,
     };
 
-    this.dispatch(ctx.element, 'hype:response-error', detail);
+    this.dispatch(ctx.element, "hype:response-error", detail);
   }
 }
 

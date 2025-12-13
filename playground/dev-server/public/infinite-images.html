@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport</head>" content="width=device-width,initial-scale=1" />
+  <title>Infinite Images — Hype Playground</title>
+  <meta name="description" content="Infinite images example using IntersectionObserver. Progressive enhancement friendly; works with or without the Hype runtime." />
+  <link rel="stylesheet" href="/tailwind.css">
+  <style nonce="%CSP_NONCE%">
+    :root {
+      --gap: 12px;
+      --card-radius: 10px;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .wrap { max-width: 1100px; margin: 28px auto; padding: 18px; }
+    .card { background: #fff; border-radius: var(--card-radius); padding: 16px; box-shadow: 0 1px 2px rgba(2,6,23,0.06); margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .item { border-radius: 8px; overflow: hidden; background: #e6eef6; display: block; position: relative; padding-bottom: 66%; height: 0; }
+    .item img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+    .meta { color: #64748b; font-size: 0.95rem; margin-top: 8px; }
+    .controls { display:flex; gap:8px; align-items:center; }
+    .btn { background: #0366d6; color: #fff; padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer; text-decoration: none; display: inline-block; }
+    .loading { opacity: 0.6; pointer-events: none; }
+    .sentinel { height: 1px; }
+    /* Snap gallery demo */
+    .snap-wrap { border: 1px solid #e6eef6; padding: 12px; border-radius: 8px; overflow: auto; margin-top: 16px; }
+    .snap-gallery { display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 16px; scroll-padding: 0 50%; }
+    .snap-item { scroll-snap-align: center; display: inline-block; border-radius: 8px; background: #fff; width: 60vw; height: 60vh; flex: 0 0 60vw; position: relative; }
+    .snap-item img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+    .snap-controls { display:flex; gap:8px; margin-top:8px; align-items:center; }
+    .small { font-size: 0.85rem; color: #64748b; }
+    footer { color: #94a3b8; text-align:center; margin-top: 18px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="card" role="banner" aria-label="Hype Playground header">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div>
+          <h1 style="margin:0;font-size:1.25rem">Infinite Images</h1>
+          <p class="meta" style="margin:6px 0 0">An example demonstrating IntersectionObserver-driven infinite loading and a scroll-snap gallery. Works without the Hype runtime; if Hype & the behavior plugin are present you can use declarative attributes like <code>data-hype</code>-trigger="revealed"</code>.</p>
+        </div>
+        <div class="controls" aria-hidden="true">
+          <a class="btn" href="/">Back</a>
+          <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="gallery-heading">
+      <h2 id="gallery-heading" style="margin:0 0 8px 0">Gallery</h2>
+      <p class="meta small" style="margin:0 0 12px 0">Images are loaded from <code>https://</code>picsum.photos</code> (placeholder). The sentinel at the end triggers more loads as it becomes visible.</p>
+
+      <!-- Reactive root (example: Hype could manage this state) -->
+      <div id="galleryRoot" data-hype-state='{"items": [], "page": 1, "loading": false}'>
+        <!-- Template-driven item prototype. Authors provide a <template> and data is injected by the helper.
+             Keep markup dumb; the runtime will clone and populate the template. -->
+        <template id="photo-tpl">
+          <li class="item"><img src="{{src}}" alt="{{alt}}"></li>
+        </template>
+
+        <ul id="imageGrid" class="grid" aria-live="polite" aria-busy="false" role="list" style="list-style:none;margin:0;padding:0;"></ul>
+
+        <!-- Sentinel used by behavior wiring. Declarative attributes:
+             - data-hype-trigger="revealed:repeat" => repeatedly trigger when visible
+             - data-hype-get="" (optional) => fetch URL template with {page} interpolation
+             - data-hype-target="#imageGrid" => where appended nodes go
+             - data-hype-template="#photo-tpl" => which template to use
+             The page includes a tiny fallback implementation when the full Hype runtime is not present.
+        -->
+        <div id="sentinel" class="sentinel" aria-hidden="true"
+             data-hype-trigger="infinite:8:repeat"
+             data-hype-get=""
+             data-hype-target="#imageGrid"
+             data-hype-template="#photo-tpl"
+             data-hype-root-margin="0px 0px 400px 0px"></div>
+
+        <div id="status" class="meta" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="snap-heading">
+      <h2 id="snap-heading" style="margin:0 0 8px 0">Snap Gallery (demo)</h2>
+      <p class="meta small" style="margin:0 0 12px 0">Demonstrates scroll-snap layout. Use the next/prev buttons to navigate; Hype's 'snap' behavior (if enabled) will also update <code>--active-index</code> on the container when</code> children change visibility.</p>
+
+      <div class="snap-wrap">
+        <div id="snapContainer" class="snap-gallery" data-hype-trigger="snap" aria-label="Snap gallery" data-hype-active-display="#activeIdx">
+          <div class="snap-item"><img src="https://picsum.photos/id/1015/1200/800" alt="Snap 1"></div>
+          <div class="snap-item"><img src="https://picsum.photos/id/1016/1200/800" alt="Snap 2"></div>
+          <div class="snap-item"><img src="https://picsum.photos/id/1018/1200/800" alt="Snap 3"></div>
+        </div>
+
+        <div class="snap-controls">
+          <button class="btn" data-hype-snap-prev data-hype-snap-target="#snapContainer" aria-label="Previous">Prev</button>
+          <button class="btn" data-hype-snap-next data-hype-snap-target="#snapContainer" aria-label="Next">Next</button>
+          <div class="small" style="margin-left:8px">Active index: <span id="activeIdx" data-hype-snap-display data-hype-snap-target="#snapContainer">0</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="card small">
+      This demo is meant for local development. In production you would fetch from your API endpoint and honor caching, CSP, and image best practices.
+    </footer>
+  </div>
+
+  <!-- Hype runtime (dev server serves static JS at /static/js/hype.js when available) -->
+  <script src="/static/js/hype.js" defer></script>
+
+
+</body>
+</html>

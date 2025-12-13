@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Live Stocks — WebSocket Example</title>
-  <meta name="description" content="Stocks ticker demo using WebSockets. Minimal inline JS; Hype runtime is loaded synchronously from /static/js/hype.js." />
-  <link rel="stylesheet" href="/tailwind.css">
+  <meta name="description" content="Stocks ticker demo using WebSockets. Progressive enhancement with initial JSON snapshot and CSP-safe inline scripts/styles." />
+  <link rel="stylesheet" href="/tailwind.css" />
 
-  <!-- Synchronously include built Hype runtime so the page is deterministic and minimal.
-       The dev workflow should ensure /static/js/hype.js is present (see dev.sh). -->
+  <!-- Optional synchronous runtime for dev; in production the loader can be used. -->
   <script src="/static/js/hype.js"></script>
 
-  <style>
+  <!-- Inline styles require a per-request nonce. The server replaces %CSP_NONCE% -->
+  <style nonce="%CSP_NONCE%">
     :root{
       --bg:#f8fafc;
       --card:#ffffff;
@@ -21,7 +21,6 @@
       --down:#ef4444;
       --radius:10px;
     }
-
     html,body{
       height:100%;
       margin:0;
@@ -29,11 +28,10 @@
       background:var(--bg);
       color:#0f172a;
     }
-
-    .container{max-width:960px;margin:28px auto;padding:0 16px}
+    .container{max-width:980px;margin:28px auto;padding:0 16px}
     .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:0 1px 2px rgba(2,6,23,0.06);margin-bottom:12px}
     .muted{color:var(--muted)}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, monospace}
     .price-up{color:var(--up);font-weight:600}
     .price-down{color:var(--down);font-weight:600}
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -45,6 +43,8 @@
     .dot.online{background:var(--up)}
     .dot.offline{background:var(--down)}
     .small{font-size:0.9rem}
+    .link { color:var(--accent); text-decoration:none; }
+    footer.site-footer { color:#94a3b8; text-align:center; margin-top:18px; font-size:13px; padding:12px 0; }
     @media (max-width:640px){.controls{flex-direction:column;align-items:stretch}th,td{padding:8px}}
   </style>
 </head>
@@ -53,28 +53,44 @@
     <header class="card" role="banner" aria-label="WebSocket stocks header">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
-          <h1 id="page-title" style="</div>margin:0;font-size:1.25rem;">Live Stocks — WebSocket Example</h1>
-          <p class="muted small" style="margin-top:6px;">Connects to a WebSocket endpoint at <code class="mono">/stocks/ws</code>. Includes a local simulate mode.</p>
+          <h1 id="page-title</div>" style="margin:0;font-size:1.25rem">Live Stocks — WebSocket Example</h1>
+          <p class="muted small" style="margin-top:6px">Connects to a WebSocket endpoint at <code class="mono">/stocks/ws</code>. Includes a simulate mode for local demos.</p>
         </div>
 
-        <div class="controls" aria-hidden="false">
-          <div style="display:flex;align-items:center;">
-            <span id="conn-dot" class="dot offline" aria-hidden="true"></span>
-            <span id="conn-text" class="muted mono">disconnected</span>
+        <div style="text-align:right; min-width:260px;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;">
+            <div style="display:flex;align-items:center;">
+              <span id="conn-dot" class="dot offline" aria-hidden="true"></span>
+              <span id="conn-text" class="muted mono">disconnected</span>
+            </div>
+
+            <div class="controls" aria-hidden="false" style="align-items:center;">
+              <button id="connectBtn" class="mono small" style="background:var(--accent);color:#fff;padding:8px 10px;border-radius:8px;border:0">Connect</button>
+              <button id="disconnectBtn" class="mono small" style="background:#e6eef6;color:var(--accent);padding:8px 10px;border-radius:8px;border:0;display:none">Disconnect</button>
+              <a class="badge" href="/sse.html" style="margin-left:8px">SSE example</a>
+            </div>
           </div>
 
-          <button id="connectBtn" class="mono small" style="background:var(--accent);color:#fff;padding:8px 10px;border-radius:8px;border:0;">Connect</button>
-          <button id="disconnectBtn" class="mono small" style="background:#e6eef6;color:var(--accent);padding:8px 10px;border-radius:8px;border:0;display:none;">Disconnect</button>
-          <a class="badge" href="/sse.html" style="margin-left:8px;">SSE example</a>
+          <div style="margin-top:8px; text-align:right">
+            <a class="link" href="/">← Back to examples</a>
+          </div>
         </div>
       </div>
+
+      <nav style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <a href="/" class="muted mono">Examples</a>
+        <a href="/live.html" class="muted mono">WebSocket</a>
+        <a href="/sse.html" class="muted mono">SSE</a>
+      </nav>
     </header>
 
     <section class="card" aria-labelledby="ws-info">
-      <h2 id="ws-info" style="margin:0 0 8px 0;">Ticker (WebSocket)</h2>
-      <p class="muted" style="margin:0 0 12px 0;">Expected messages: <span class="mono">{ "type": "snapshot", "items": [...] }</span> or <span class="mono">{ "type": "update", "symbol": "AAPL", "price": 123.45, "change": -0.67 }</span>.</p>
+      <h2 id="ws-info" style="margin:0 0 8px 0">Ticker (WebSocket)</h2>
+      <p class="muted" style="margin:0 0 12px 0">
+        Expected messages (JSON): <code class="mono">{ "type": "stocks:snapshot", "items": [...] }</code> or <code class="mono">{ "type": "stock:update", "symbol": "AAPL", "price": 123.45, "change": -0.67 }</code>.
+      </p>
 
-      <div style="overflow:auto;">
+      <div style="overflow:auto">
         <table aria-live="polite" role="table" aria-describedby="ws-info">
           <thead>
             <tr>
@@ -84,30 +100,220 @@
               <th class="muted">Last</th>
             </tr>
           </thead>
-          <tbody id="rows"></tbody>
+          <tbody id="rows">
+            <!-- Progressive fallback rows so the page is useful without JS -->
+            <tr id="row-AAPL"><td class="mono"><strong>AAPL</strong></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
+            <tr id="row-GOOG"><td class="mono"><strong>GOOG</strong></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
+            <tr id="row-MSFT"><td class="mono"><strong>MSFT</strong></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
+          </tbody>
         </table>
       </div>
 
-      <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <label for="simulate" class="muted mono" style="display:flex;align-items:center;gap:8px;">
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label for="simulate" class="muted mono" style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="simulate" aria-label="Simulate updates" /> Simulate updates locally
         </label>
 
-        <label for="symbol" class="muted mono" style="margin-left:8px;">Subscribe:</label>
-        <input id="symbol" class="mono" placeholder="e.g. AAPL" style="padding:8px;border-radius:6px;border:1px solid #e6eef6;" aria-label="Subscribe symbol" />
-        <button id="addSymbol" class="mono" style="padding:8px;border-radius:6px;border:1px solid #d1d5db;">Add</button>
+        <label for="symbol" class="muted mono" style="margin-left:8px">Subscribe:</label>
+        <input id="symbol" class="mono" placeholder="e.g. AAPL" style="padding:8px;border-radius:6px;border:1px solid #e6eef6" aria-label="Subscribe symbol" />
+        <button id="addSymbol" class="mono" style="padding:8px;border-radius:6px;border:1px solid #d1d5db">Add</button>
       </div>
     </section>
 
     <section class="card" aria-labelledby="hints">
-      <h3 id="hints" style="margin:0 0 8px 0;">Developer notes</h3>
-      <ul class="muted" style="margin:0;padding-left:18px;">
-        <li>The backend dev server provides <code class="mono">/stocks/ws</code> and <code class="mono">/stocks/sse</code>.</li>
-        <li>This page loads the compiled Hype runtime at <code class="mono">/static/js/hype.js</code> and initializes it on load.</li>
+      <h3 id="hints" style="margin:0 0 8px 0">Developer notes</h3>
+      <ul class="muted" style="margin:0;padding-left:18px">
+        <li>The dev backend provides <code class="mono">/stocks/ws</code> and <code class="mono">/stocks/sse</code>. Each message should be a JSON payload.</li>
+        <li>Progressive enhancement: this page includes an embedded</li> JSON snapshot (below) so it renders initial rows without network calls.</li>
+        <li>The client will parse snapshot/update messages and update the table; simulate mode is available for local demos.</li>
       </ul>
     </section>
+
+    <footer class="card site-footer" role="contentinfo">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="muted">Live (WebSocket) — Hype playground</div>
+        <div style="text-align:right"><a class="link" href="/">← Back to examples</a></div>
+      </div>
+    </footer>
   </main>
 
-  <script type="module" src="/static/js/live.js"></script>
+  <!-- Initial data snapshot (JSON) used to progressively enhance the table -->
+  <script type="application/json" id="stocks-initial">
+    { "items": [
+      { "symbol": "AAPL", "price": 172.35, "change": 0.42, "timestamp": 1691800000000 },
+      { "symbol": "GOOG", "price": 2739.12, "change": -3.58, "timestamp": 1691800000000 },
+      { "symbol": "MSFT", "price": 318.55, "change": 0.00, "timestamp": 1691800000000 }
+    ] }
+  </script>
+
+  <!-- Inline script requires the per-request nonce; server will replace %CSP_NONCE% -->
+  <script nonce="%CSP_NONCE%">
+  (function () {
+    'use strict';
+
+    const $ = id => document.getElementById(id);
+    const rows = $('rows');
+    const connDot = $('conn-dot');
+    const connText = $('conn-text');
+    const connectBtn = $('connectBtn');
+    const disconnectBtn = $('disconnectBtn');
+    const simulateCheckbox = $('simulate');
+    const addSymbolBtn = $('addSymbol');
+    const symbolInput = $('symbol');
+
+    const fmtPrice = p => (typeof p === 'number' ? p.toFixed(2) : '—');
+    const fmtChange = c => (typeof c === 'number' ? ((c > 0 ? '+' : '') + c.toFixed(2)) : '—');
+
+    function setConnected(v) {
+      if (connDot) {
+        connDot.classList.toggle('online', !!v);
+        connDot.classList.toggle('offline', !v);
+      }
+      if (connText) connText.textContent = v ? 'connected' : 'disconnected';
+      if (connectBtn) connectBtn.style.display = v ? 'none' : '';
+      if (disconnectBtn) disconnectBtn.style.display = v ? '' : 'none';
+    }
+
+    function renderRow(symbol, price, change, ts) {
+      if (!symbol) return;
+      const key = String(symbol).toUpperCase();
+      const id = 'row-' + key;
+      let tr = document.getElementById(id);
+      const changeClass = (typeof change === 'number') ? ((change > 0) ? 'price-up' : (change < 0) ? 'price-down' : '') : '';
+      const priceStr = (price != null) ? fmtPrice(price) : '—';
+      const changeStr = (change != null) ? fmtChange(change) : '—';
+      const lastStr = ts ? new Date(ts).toLocaleTimeString() : '—';
+
+      if (!tr) {
+        tr = document.createElement('tr'); tr.id = id;
+        const tdSym = document.createElement('td'); tdSym.className = 'mono'; const strong = document.createElement('strong'); strong.textContent = key; tdSym.appendChild(strong);
+        const tdPrice = document.createElement('td'); tdPrice.className = 'mono price'; tdPrice.textContent = priceStr;
+        const tdChange = document.createElement('td'); tdChange.className = 'mono change ' + (changeClass || ''); tdChange.textContent = changeStr;
+        const tdLast = document.createElement('td'); tdLast.className = 'muted mono'; tdLast.textContent = lastStr;
+        tr.appendChild(tdSym); tr.appendChild(tdPrice); tr.appendChild(tdChange); tr.appendChild(tdLast);
+        rows && rows.appendChild(tr);
+      } else {
+        const priceEl = tr.querySelector('.price'); if (priceEl) priceEl.textContent = priceStr;
+        const changeEl = tr.querySelector('.change'); if (changeEl) { changeEl.classList.remove('price-up','price-down'); if (changeClass) changeEl.classList.add(changeClass); changeEl.textContent = changeStr; }
+        const lastEl = tr.querySelector('.muted'); if (lastEl) lastEl.textContent = lastStr;
+      }
+    }
+
+    function handlePayload(payload) {
+      if (!payload) return;
+      try {
+        // snapshot form
+        if (payload.type === 'stocks:snapshot' && Array.isArray(payload.items)) {
+          payload.items.forEach(item => renderRow(item.symbol, item.price, item.change, item.timestamp || Date.now()));
+          return;
+        }
+        // update form
+        if (payload.type === 'stock:update' && payload.symbol) {
+          renderRow(payload.symbol, payload.price, payload.change, payload.timestamp || Date.now());
+          return;
+        }
+        // some servers may send { items: [...] } directly or single object with symbol
+        if (Array.isArray(payload.items)) {
+          payload.items.forEach(item => renderRow(item.symbol, item.price, item.change, item.timestamp || Date.now()));
+          return;
+        }
+        if (payload.symbol) {
+          renderRow(payload.symbol, payload.price, payload.change, payload.timestamp || Date.now());
+          return;
+        }
+      } catch (e) {
+        console.warn('Invalid payload', e);
+      }
+    }
+
+    // Render initial embedded snapshot (progressive enhancement)
+    try {
+      const raw = $('stocks-initial') && $('stocks-initial').textContent;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.items)) parsed.items.forEach(item => renderRow(item.symbol, item.price, item.change, item.timestamp || Date.now()));
+      }
+    } catch (e) {
+      console.warn('initial snapshot parse failed', e);
+    }
+
+    // WebSocket handling + simulate fallback
+    let ws = null;
+    let simulateTimer = null;
+    const subscribed = new Set(['AAPL','GOOG','MSFT']);
+
+    function connectWS() {
+      disconnectWS();
+      try {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stocks/ws');
+      } catch (e) {
+        console.error('WS connect failed', e);
+        setConnected(false);
+        return;
+      }
+
+      ws.addEventListener('open', () => {
+        setConnected(true);
+        // ask for snapshot (server may or may not implement this)
+        try { ws.send(JSON.stringify({ type: 'snapshot' })); } catch (e) {}
+      });
+
+      ws.addEventListener('message', ev => {
+        try { const obj = JSON.parse(ev.data); handlePayload(obj); } catch (e) { console.warn('ws json', e); }
+      });
+
+      ws.addEventListener('close', () => setConnected(false));
+      ws.addEventListener('error', () => { console.warn('ws error'); setConnected(false); });
+    }
+
+    function disconnectWS() { if (ws) { try { ws.close(); } catch (_) {} ws = null; } setConnected(false); }
+
+    function startSimulate() {
+      stopSimulate();
+      Array.from(subscribed).forEach(sym => renderRow(sym, (100 + Math.random() * 150), 0, Date.now()));
+      simulateTimer = setInterval(() => {
+        const syms = Array.from(subscribed);
+        if (!syms.length) return;
+        const symbol = syms[Math.floor(Math.random() * syms.length)];
+        const prevRow = document.getElementById('row-' + symbol);
+        const prevPrice = prevRow ? parseFloat((prevRow.querySelector('.price') && prevRow.querySelector('.price').textContent) || '100') : (100 + Math.random() * 50);
+        const change = Math.round(((Math.random() - 0.5) * 2) * 100) / 100;
+        const price = Math.max(0.01, Math.round((prevPrice + change) * 100) / 100);
+        handlePayload({ type: 'stock:update', symbol, price, change, timestamp: Date.now() });
+      }, 700);
+      setConnected(true);
+    }
+
+    function stopSimulate() { if (simulateTimer) { clearInterval(simulateTimer); simulateTimer = null; } setConnected(false); }
+
+    // UI wiring
+    if (connectBtn) connectBtn.addEventListener('click', () => { if (simulateCheckbox && simulateCheckbox.checked) startSimulate(); else connectWS(); });
+    if (disconnectBtn) disconnectBtn.addEventListener('click', () => { if (simulateCheckbox && simulateCheckbox.checked) stopSimulate(); else disconnectWS(); });
+    if (simulateCheckbox) simulateCheckbox.addEventListener('change', () => { if (simulateCheckbox.checked) { disconnectWS(); startSimulate(); } else { stopSimulate(); } });
+
+    if (addSymbolBtn) addSymbolBtn.addEventListener('click', () => {
+      const v = (symbolInput && symbolInput.value || '').trim().toUpperCase();
+      if (!v) return;
+      subscribed.add(v);
+      renderRow(v, null, null, null);
+      // Request subscribe on WS if connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'subscribe', symbol: v })); } catch (e) {}
+      }
+      if (symbolInput) symbolInput.value = '';
+    });
+
+    // Optional runtime pub/sub integration
+    if (window.hype && typeof window.hype.sub === 'function') {
+      try { window.hype.sub('price', payload => { if (payload && payload.symbol) handlePayload(payload); }); } catch (e) { console.debug('hype.sub attach failed', e); }
+    }
+
+    // Expose helpers for dev/debugging
+    try { window.__liveStocks = { connectWS, disconnectWS, startSimulate, stopSimulate, renderRow, subscribed }; } catch (_) {}
+
+    // Stay disconnected until user connects
+    setConnected(false);
+  })();
+  </script>
 </body>
 </html>

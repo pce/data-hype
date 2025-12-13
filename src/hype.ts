@@ -36,10 +36,9 @@ import { authPlugin } from "./plugins/auth";
  * Default configuration
  */
 const DEFAULT_CONFIG: HypeConfig = {
-  // Safer-by-default: do not perform unsafe HTML injection unless explicitly permitted by the server.
-  // Consumers can opt-in to `innerHTML` by configuring `createHype({ plugins: { ... } })` or by
-  // the server including explicit permission (see performSwap checks below).
-  // NOTE: tests expect the default config to report "innerHTML" as the defaultSwap value.
+  // Safer-by-default: Hype uses `innerText` as the default swap to avoid unsafe HTML injection.
+  // If a consumer (or tests) require `innerHTML`, explicitly opt-in via configuration:
+  //   createHype({ defaultSwap: 'innerHTML' })
   // At runtime Hype still blocks unsafe `innerHTML` swaps unless explicitly allowed by:
   //  - the element explicitly requesting `hype-swap="innerHTML"` (author opt-in), or
   //  - the server setting header `X-Hype-Allow-InnerHTML: true`, or
@@ -93,6 +92,10 @@ export class Hype {
 
   // cleanup functions returned by attached plugins (if plugin returns a teardown)
   private _attachedPluginCleanups: Array<() => void> = [];
+
+  // MutationObserver used to watch for `data-hype-active-index` changes (snap behavior).
+  // Hype will update optional UI targets when behaviors set this attribute.
+  private _activeIndexObserver: MutationObserver | null = null;
 
   private initialized = false;
 
@@ -175,9 +178,51 @@ export class Hype {
   }
 
   /**
-   * Initialize Hype on the document
-   * Sets up event listeners and observes DOM changes
+   * Public helper: clone a template and interpolate {{keys}} with provided data.
+   *
+   * Usage: `hype.templateClone('#photo-tpl', { src: '...', alt: '...' })`
+   *
+   * Returns an Element (first top-level node) or DocumentFragment or null.
    */
+  public templateClone(selectorOrElement: string | HTMLTemplateElement, data: Record<string, any> = {}): Element | DocumentFragment | null {
+    try {
+      const tpl = typeof selectorOrElement === "string" ? (document.querySelector(selectorOrElement) as HTMLTemplateElement | null) : selectorOrElement;
+      if (!tpl || !(tpl instanceof HTMLTemplateElement)) return null;
+      const frag = tpl.content.cloneNode(true) as DocumentFragment;
+
+      const interpolate = (str: string) =>
+        String(str).replace(/\{\{\s*([\w.$]+)\s*\}\}/g, (_m, key) => {
+          const parts = key.split(".");
+          let v: any = data;
+          for (const p of parts) {
+            if (v == null) return "";
+            v = v[p];
+          }
+          return v == null ? "" : String(v);
+        });
+
+      const walk = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          node.textContent = interpolate(node.textContent || "");
+          return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const el = node as Element;
+        for (const attr of Array.from(el.attributes || [])) {
+          const replaced = interpolate(attr.value);
+          if (replaced !== attr.value) el.setAttribute(attr.name, replaced);
+        }
+        for (const child of Array.from(el.childNodes || [])) walk(child);
+      };
+
+      for (const n of Array.from(frag.childNodes)) walk(n);
+      return frag.firstElementChild ? frag.firstElementChild : frag;
+    } catch (err) {
+      if (this.config?.debug) console.warn("hype.templateClone failed", err);
+      return null;
+    }
+  }
+
   /**
    * Initialize Hype on the document and optionally attach plugins.
    *
@@ -255,6 +300,52 @@ export class Hype {
       subtree: true,
     });
 
+    // Expose the instance on window for behavior implementations that rely on a global helper.
+    // This keeps backward compatibility with examples that reference `window.hype.templateClone`.
+    try {
+      if (typeof window !== "undefined") {
+        (window as any).hype = this;
+      }
+    } catch {
+      /* ignore non-browser environments */
+    }
+
+    // Observe `data-hype-active-index` attribute changes so examples can reflect snap active index.
+    // Containers using the snap behavior may set `data-hype-active-index`; to display it,
+    // authors may include a child with `data-hype-active-display` on the container pointing
+    // to a selector (or include an element with id="activeIdx" inside the container for simple demos).
+    try {
+      this._activeIndexObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type !== "attributes") continue;
+          const target = m.target as HTMLElement;
+          if (!target) continue;
+          const newVal = target.getAttribute("data-hype-active-index");
+          // prefer explicit selector on container
+          const displaySelector = target.getAttribute("data-hype-active-display");
+          if (displaySelector) {
+            try {
+              const disp = document.querySelector(displaySelector) as HTMLElement | null;
+              if (disp) disp.textContent = newVal ?? "";
+              continue;
+            } catch {
+              /* ignore */
+            }
+          }
+          // fallback: find an element inside the container with id 'activeIdx'
+          try {
+            const fallback = target.querySelector("#activeIdx") as HTMLElement | null;
+            if (fallback) fallback.textContent = newVal ?? "";
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+      this._activeIndexObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-hype-active-index"] });
+    } catch {
+      /* ignore observer errors */
+    }
+
     this.initialized = true;
   }
 
@@ -272,6 +363,29 @@ export class Hype {
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
+    }
+
+    // Disconnect active-index observer if present
+    if (this._activeIndexObserver) {
+      try {
+        this._activeIndexObserver.disconnect();
+      } catch {
+        /* ignore */
+      }
+      this._activeIndexObserver = null;
+    }
+
+    // Remove global reference if we published it
+    try {
+      if (typeof window !== "undefined" && (window as any).hype === this) {
+        try {
+          delete (window as any).hype;
+        } catch {
+          (window as any).hype = undefined;
+        }
+      }
+    } catch {
+      /* ignore non-browser errors */
     }
 
     // plugin-specific cleanup is handled via `_attachedPluginCleanups` (invoked below).

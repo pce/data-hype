@@ -6,7 +6,7 @@
  * Responsibilities:
  * - Progressive, non-blocking load of the Hype runtime at /static/js/hype.js
  * - Expose runtime state on `window.hypeModule` / `window.hypeModuleInitialized`
- * - Delegate CSRF/auth helpers to `src/client.ts` so examples and the runtime share logic
+ * - Delegate CSRF/auth helpers to an immutable client created by `src/client.ts`
  * - Provide DOM helpers to bind a simple login form and logout buttons
  *
  * Notes:
@@ -16,14 +16,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  getCsrfToken as clientGetCsrfToken,
-  login as clientLogin,
-  logout as clientLogout,
-  me as clientMe,
-  bindLoginForms as clientBindLoginForms,
-  bindLogoutButtons as clientBindLogoutButtons,
-} from "./client";
+import createClient, { defaultClient as defaultAuthClient } from "./client";
 
 const HYPE_PATH = "/static/js/hype.js";
 
@@ -37,6 +30,22 @@ declare global {
 
 type JsonResp = { ok?: boolean; [k: string]: any };
 type LoginResult = { ok: boolean; user?: any; error?: string; [k: string]: any };
+
+/**
+ * We prefer the provided default immutable auth client instance exported by
+ * `src/client.ts`. If for some reason that isn't available (eg. a different
+ * bundling arrangement), fall back to creating a new client with defaults.
+ */
+const authClient = (defaultAuthClient || createClient()) as {
+  fetchJson?: (url: string, init?: RequestInit) => Promise<JsonResp>;
+  getCsrfToken: () => Promise<string | null>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  loginWithPayload?: (payload: any) => Promise<LoginResult>;
+  logout: () => Promise<JsonResp>;
+  me: () => Promise<JsonResp>;
+  bindLoginForm?: (scope?: ParentNode) => void;
+  bindLogoutButtons: (scope?: ParentNode) => void;
+};
 
 /**
  * Attempt to dynamically import the Hype runtime.
@@ -87,59 +96,66 @@ export async function loadHypeRuntime(): Promise<any | null> {
 }
 
 /* ---------------------------
-   Auth / CSRF helpers (delegated to src/client.ts)
+   Auth / CSRF helpers (delegated to immutable authClient)
    --------------------------- */
 
 /**
  * Fetch a CSRF token from the server.
- * Delegates to `src/client.ts#getCsrfToken`.
+ * Delegates to the auth client instance.
  */
 export async function getCsrfToken(): Promise<string | null> {
-  return clientGetCsrfToken();
+  return authClient.getCsrfToken();
 }
 
 /**
  * Perform login via the server endpoint.
- * Delegates to `src/client.ts#login`.
+ * Delegates to the auth client instance.
  */
 export async function login(username: string, password: string): Promise<LoginResult> {
-  return clientLogin(username, password);
+  return authClient.login(username, password);
 }
 
 /**
  * Logout via POST /logout. Server clears auth cookie.
- * Delegates to `src/client.ts#logout`.
+ * Delegates to the auth client instance.
  */
 export async function logout(): Promise<JsonResp> {
-  return clientLogout();
+  return authClient.logout();
 }
 
 /**
  * Fetch current authenticated user info.
- * Delegates to `src/client.ts#me`.
+ * Delegates to the auth client instance.
  */
 export async function me(): Promise<JsonResp> {
-  return clientMe();
+  return authClient.me();
 }
 
 /* ---------------------------
    DOM helpers for simple auth forms (delegated)
    --------------------------- */
 
+// Legacy alias `bindLoginForms` removed. Use `bindLoginForm(scope)` instead.
+
 /**
- * Bind all login forms in the provided scope (default: document).
- * Delegates to `src/client.ts#bindLoginForms`.
+ * Preferred programmatic binder name: bindLoginForm
+ * This is provided as a convenience so callers can use the clearer singular API.
  */
-export function bindLoginForms(scope: ParentNode = document): void {
-  return clientBindLoginForms(scope);
+export function bindLoginForm(scope: ParentNode = document): void {
+  const fn = (authClient as any).bindLoginForm;
+  if (typeof fn === "function") {
+    return fn(scope);
+  }
+  // no-op if the client doesn't expose the binder; keeps loader resilient
+  return;
 }
 
 /**
  * Bind elements with [data-logout] in the provided scope (default: document).
- * Delegates to `src/client.ts#bindLogoutButtons`.
+ * Delegates to the auth client instance's logout binder.
  */
 export function bindLogoutButtons(scope: ParentNode = document): void {
-  return clientBindLogoutButtons(scope);
+  return authClient.bindLogoutButtons(scope);
 }
 
 /* ---------------------------
@@ -153,9 +169,9 @@ export function bindLogoutButtons(scope: ParentNode = document): void {
  *  - Dispatch a `hype:loader:ready` event with runtime availability info
  */
 if (typeof document !== "undefined") {
-  document.addEventListener("DOMContentLoaded", async () => {
+  const __hype_loader_init = async () => {
     try {
-      bindLoginForms();
+      bindLoginForm();
       bindLogoutButtons();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -180,7 +196,15 @@ if (typeof document !== "undefined") {
     } catch {
       // best-effort, ignore if CustomEvent dispatch fails in odd environments
     }
-  });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      void __hype_loader_init();
+    });
+  } else {
+    void __hype_loader_init();
+  }
 }
 
 /* ---------------------------
@@ -193,6 +217,6 @@ export default {
   login,
   logout,
   me,
-  bindLoginForms,
+  bindLoginForm,
   bindLogoutButtons,
 };

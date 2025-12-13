@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype :: Toggleable Theme Example</title>
+
+  <!-- If you compile Tailwind into a site CSS, point to it here.
+       The dev-server includes a `tailwind.css` at the repo root in examples,
+       but we provide fallbacks so the demo still looks reasonable without Tailwind. -->
+  <link rel="stylesheet" href="/tailwind.css" onerror="this.remove()">
+
+  <style>
+    /* Fallback/basic styles in case Tailwind isn't available */
+    :root {
+      --bg: #ffffff;
+      --fg: #111827;
+      --card-bg: #ffffff;
+      --card-fg: #111827;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --radius: 0.5rem;
+      --gap: 1rem;
+    }
+    .dark {
+      --bg: #0b1220;
+      --fg: #e6eef8;
+      --card-bg: #071024;
+      --card-fg: #e6eef8;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      color: var(--fg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 3rem auto;
+      padding: 0 1rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: linear-gradient(#fff, #f7f7f7);
+      color: var(--fg);
+      padding: .5rem .75rem;
+      border-radius: .375rem;
+      cursor: pointer;
+      font-weight: 600;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    }
+
+    .btn:focus { outline: 2px solid rgba(37,99,235,0.25); outline-offset: 2px; }
+
+    .btn--primary {
+      background: var(--accent);
+      color: white;
+      border-color: rgba(0,0,0,0.05);
+    }
+
+    .card {
+      background: var(--card-bg);
+      color: var(--card-fg);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.06);
+    }
+
+    .muted { color: var(--muted); }
+
+    /* Respect reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+
+    /* Small responsive tweaks */
+    @media (max-width: 520px) {
+      .controls { flex-direction: column; align-items: stretch; }
+      .controls .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="controls" role="region" aria-label="Theme controls">
+      <button id="theme-toggle" class="btn" aria-pressed="false" aria-label="Toggle theme">Toggle theme</button>
+      <button id="theme-light" class="btn">Light</button>
+      <button id="theme-dark" class="btn btn--primary">Dark</button>
+      <div style="margin-left:auto; font-size:.9rem;" class="muted">Current: <span id="theme-current">—</span></div>
+    </div>
+
+    <section class="card" aria-live="polite">
+      <h1 style="margin:0 0 .5rem 0">Toggleable Theme (class-based)</h1>
+      <p class="muted" style="margin:0 0 1rem 0">
+        This example demonstrates a small, accessible theme toggle that works with Tailwind's
+        class-based dark mode (i.e. toggling the <code>dark</</code>code> class on <code>&lt;html&gt;</code>).
+        It persistently stores the user's choice and falls back to the system preference.
+      </p>
+
+      <div style="display:grid; gap:.5rem;">
+        <div><strong>How</strong> it works:</strong></div>
+        <ol style="margin:0 0 0 1.25rem; padding:0;">
+          <li>Read stored preference (</li>sessionStorage then localStorage).</li>
+          <li>If none, use <code>prefers-color-s</code>cheme</code>.</li>
+          <li>Toggling updates the <code>classList</code</code>> on <code>document.documentElement</code></code> and stores choice.</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Toggleable theme script — small, dependency-free</script>, progressive.
+    (function () {
+      const STORAGE_KEY = 'hype:theme'; // key used in sessionStorage/localStorage
+      const DARK = 'dark';
+      const LIGHT = 'light';
+
+      // Read explicit stored preference (sessionStorage preferred, fallback to localStorage)
+      function readStored() {
+        try {
+          return sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Save preference (try sessionStorage first, then localStorage)
+      function writeStored(val) {
+        try { sessionStorage.setItem(STORAGE_KEY, val); return; } catch {}
+        try { localStorage.setItem(STORAGE_KEY, val); } catch {}
+      }
+
+      // Respect OS-level preference
+      function systemPrefersDark() {
+        try {
+          return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      // Apply the theme by toggling the 'dark' class on <html></html>
+      function apply(theme) {
+        const html = document.documentElement;
+        const isDark = theme === DARK;
+        html.classList.toggle('dark', isDark);
+
+        // update UI state helpers
+        const cur = document.getElementById('theme-current');
+        if (cur) cur.textContent = isDark ? 'dark' : 'light';
+        const toggleBtn = document.getElementById('theme-toggle');
+        if (toggleBtn) toggleBtn.setAttribute('aria-pressed', String(isDark));
+
+        // Emit a small event so Hype or other listeners can react
+        try {
+          document.dispatchEvent(new CustomEvent('hype:theme:change', { detail: { theme } }));
+        } catch (e) { /* ignore */ }
+      }
+
+      // Determine effective theme at init
+      function initTheme() {
+        const stored = readStored();
+        if (stored === DARK || stored === LIGHT) {
+          apply(stored);
+          return;
+        }
+        apply(systemPrefersDark() ? DARK : LIGHT);
+      }
+
+      // Toggle helper
+      function toggle() {
+        const html = document.documentElement;
+        const next = html.classList.contains('dark') ? LIGHT : DARK;
+        apply(next);
+        writeStored(next);
+      }
+
+      function setLight() { apply(LIGHT); writeStored(LIGHT); }
+      function setDark() { apply(DARK); writeStored(DARK); }
+
+      // Wire UI
+      document.addEventListener('DOMContentLoaded', () => {
+        initTheme();
+        const t = document.getElementById('theme-toggle');
+        const l = document.getElementById('theme-light');
+        const d = document.getElementById('theme-dark');
+        if (t) t.addEventListener('click', toggle);
+        if (l) l.addEventListener('click', setLight);
+        if (d) d.addEventListener('click', setDark);
+      });
+
+      // If the user hasn't set an explicit preference, react to system changes
+      try {
+        if (window.matchMedia) {
+          const mq = window.matchMedia('(prefers-color-scheme: dark)');
+          mq.addEventListener?.('change', (ev) => {
+            // Only react if no explicit stored preference
+            if (readStored()) return;
+            apply(ev.matches ? DARK : LIGHT);
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  </script>
+</body>
+</html>

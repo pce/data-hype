@@ -22,25 +22,18 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  getCsrfToken as clientGetCsrfToken,
-  login as clientLogin,
-  logout as clientLogout,
-  me as clientMe,
-  bindLoginForms as clientBindLoginForms,
-  bindLogoutButtons as clientBindLogoutButtons,
-} from "../client";
+import { defaultClient as client } from "../client";
 
 /**
  * The shape of helpers we attach under `hype.auth`.
  */
 export interface HypeAuthHelpers {
   getCsrfToken: (endpoint?: string) => Promise<string | null>;
-  login: (username: string, password: string, endpoint?: string) => Promise<any>;
-  logout: (endpoint?: string) => Promise<any>;
-  me: (endpoint?: string) => Promise<any>;
-  bindLoginForms: (scope?: ParentNode, loginEndpoint?: string) => void;
-  bindLogoutButtons: (scope?: ParentNode, logoutEndpoint?: string) => void;
+  login: (username: string, password: string) => Promise<any>;
+  logout: () => Promise<any>;
+  me: () => Promise<any>;
+  bindLoginForm: (scope?: ParentNode) => void;
+  bindLogoutButtons: (scope?: ParentNode) => void;
   autoBind?: () => void;
 }
 
@@ -79,20 +72,17 @@ export const authPlugin = {
     }
 
     const helpers: HypeAuthHelpers = {
-      getCsrfToken: (endpoint?: string) => clientGetCsrfToken(endpoint),
-      login: (username: string, password: string, endpoint?: string) =>
-        clientLogin(username, password, endpoint),
-      logout: (endpoint?: string) => clientLogout(endpoint),
-      me: (endpoint?: string) => clientMe(endpoint),
-      bindLoginForms: (scope?: ParentNode, loginEndpoint?: string) =>
-        clientBindLoginForms(scope, loginEndpoint),
-      bindLogoutButtons: (scope?: ParentNode, logoutEndpoint?: string) =>
-        clientBindLogoutButtons(scope, logoutEndpoint),
+      getCsrfToken: () => client.getCsrfToken(),
+      login: (username: string, password: string) => client.login(username, password),
+      logout: () => client.logout(),
+      me: () => client.me(),
+      bindLoginForm: (scope?: ParentNode) => client.bindLoginForm(scope),
+      bindLogoutButtons: (scope?: ParentNode) => client.bindLogoutButtons(scope),
       autoBind: () => {
         try {
           if (typeof document !== "undefined") {
-            clientBindLoginForms(document);
-            clientBindLogoutButtons(document);
+            client.bindLoginForm(document);
+            client.bindLogoutButtons(document);
           }
         } catch (err) {
           // best-effort
@@ -111,7 +101,7 @@ export const authPlugin = {
     attachProp(hypeInstance, "logout", helpers.logout);
     attachProp(hypeInstance, "me", helpers.me);
     attachProp(hypeInstance, "getCsrfToken", helpers.getCsrfToken);
-    attachProp(hypeInstance, "bindLoginForms", helpers.bindLoginForms);
+    attachProp(hypeInstance, "bindLoginForm", helpers.bindLoginForm);
     attachProp(hypeInstance, "bindLogoutButtons", helpers.bindLogoutButtons);
 
     // Optional: auto-bind login/logout forms present at install time.
@@ -198,7 +188,7 @@ export const authPlugin = {
         /* ignore */
       }
       try {
-        delete (hypeInstance as any).bindLoginForms;
+        delete (hypeInstance as any).bindLoginForm;
       } catch {
         /* ignore */
       }

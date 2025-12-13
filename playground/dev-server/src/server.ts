@@ -449,17 +449,70 @@ if (!fs.existsSync(publicDir)) {
   console.warn(`Dev server public directory not found: ${publicDir}`);
 }
 
-// Serve HTML files with per-request nonce injection so CSP can remain strict.
-// This middleware will attempt to read .html files from the public directory,
-// replace any occurrence of the token %CSP_NONCE% with the generated nonce,
-// and inject a <meta name="csp-nonce"> tag into the <head> if one is not present.
-// For non-HTML assets fall through to the static server below.
+// Prefer convention-based EJS rendering for HTML requests when .ejs templates exist
+// (views are served from the public directory). If no .ejs exists for the request,
+// fall back to the static HTML + %CSP_NONCE% replacement behavior.
+try {
+  // Configure express to look for views in the public directory and use EJS if available.
+  app.set("views", publicDir);
+  app.set("view engine", "ejs");
+} catch (e) {
+  // If express/ejs isn't available or configuration fails, continue and fall back to static files.
+  // This keeps the dev server resilient.
+}
+
 app.use((req, res, next) => {
   try {
     const accept = req.headers.accept || "";
     const wantsHtml = req.path === "/" || req.path.endsWith(".html") || accept.includes("text/html");
 
     if (wantsHtml) {
+      // compute the conventional view name: "/" -> "index", "/foo.html" -> "foo"
+      const viewName = req.path === "/" ? "index" : req.path.replace(/^\/+/, "").replace(/\.html$/i, "");
+      const ejsFile = path.join(publicDir, `${viewName}.ejs`);
+
+      // If a .ejs view exists, render it via Express so templates can use variables and no manual nonce replacement is needed.
+      if (fs.existsSync(ejsFile) && fs.statSync(ejsFile).isFile()) {
+        // ensure a nonce is available to templates via locals so they can render attributes like nonce="<%= cspNonce %>"
+        const nonce = (res.locals as any).cspNonce || crypto.randomBytes(16).toString("base64");
+        res.locals = Object.assign(res.locals || {}, { cspNonce: nonce });
+
+        // Render the view. If rendering fails, fall back to static HTML handling below.
+        return res.render(viewName, res.locals, (err, html) => {
+          if (err || !html) {
+            // Rendering failed; fall back to static file replacement below.
+            try {
+              const targetPath = req.path === "/" ? "index.html" : req.path.replace(/^\/+/, "");
+              const filePath = path.join(publicDir, targetPath);
+              if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+                const fallbackNonce = (res.locals as any).cspNonce || crypto.randomBytes(16).toString("base64");
+                let fallbackHtml = fs.readFileSync(filePath, "utf8");
+                fallbackHtml = fallbackHtml.replace(/%CSP_NONCE%/g, fallbackNonce);
+                if (!/meta[^>]*name=(?:'|")csp-nonce(?:'|")/i.test(fallbackHtml)) {
+                  fallbackHtml = fallbackHtml.replace(/<head([^>]*)>/i, `<head$1>\n<meta name="csp-nonce" content="${fallbackNonce}">`);
+                }
+                res.setHeader("Content-Type", "text/html; charset=utf-8");
+                res.send(fallbackHtml);
+                return;
+              }
+            } catch (e2) {
+              // ignore and continue to next()
+            }
+            return next();
+          }
+
+          // Ensure nonce meta is present and placeholders are replaced before sending
+          if (!/meta[^>]*name=(?:'|")csp-nonce(?:'|")/i.test(html)) {
+            html = html.replace(/<head([^>]*)>/i, `<head$1>\n<meta name="csp-nonce" content="${res.locals.cspNonce}">`);
+          }
+          html = html.replace(/%CSP_NONCE%/g, String(res.locals.cspNonce));
+
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.send(html);
+        });
+      }
+
+      // No .ejs view found — fall back to static HTML with %CSP_NONCE% replacement
       const targetPath = req.path === "/" ? "index.html" : req.path.replace(/^\/+/, "");
       const filePath = path.join(publicDir, targetPath);
 
@@ -468,8 +521,7 @@ app.use((req, res, next) => {
         let html = fs.readFileSync(filePath, "utf8");
 
         // Replace any explicit placeholder tokens with the nonce.
-        // Authors can include %CSP_NONCE% in templates where they need the nonce
-        // attribute (for example: <script nonce="%CSP_NONCE%"> ... </script>).
+        // Authors can include %CSP_NONCE% in templates where they need the nonce.
         html = html.replace(/%CSP_NONCE%/g, nonce);
 
         // If no meta tag exists to expose the nonce, inject one into <head>.
@@ -483,7 +535,7 @@ app.use((req, res, next) => {
       }
     }
   } catch (e) {
-    // If any injection step fails, fall back to static serving
+    // If any injection or render step fails, let the request fall through to static serving
   }
   next();
 });

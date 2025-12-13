@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype Declarative Login Demo</title>
+  <link rel="stylesheet" href="/tailwind.css" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#f7fafc; color:#111827; padding:2rem; }
+    .card { background:#fff; border-radius:8px; padding:1.25rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .muted { color:#6b7280; font-size:.95rem; }
+    .field { display:flex; gap:.75rem; align-items:center; margin-bottom:.75rem; }
+    label { width:96px; font-size:.95rem; color:#374151; }
+    input[type="text"], input[type="password"] { flex:1; padding:.55rem .75rem; border:1px solid #e5e7eb; border-radius:6px; background:#fff; }
+    button { padding:.5rem .9rem; border-radius:6px; border:0; background:#0ea5a4; color:#fff; cursor:pointer; }
+    [data-login-message] { margin-top:.5rem; font-size:.92rem; color:#374151; }
+    .ok { color: #065f46; }
+    .error { color: #991b1b; }
+    .note { font-size:.88rem; color:#4b5563; margin-top:.5rem; }
+    pre { background:#111827; color:#f8fafc; padding:.5rem; border-radius:6px; overflow:auto; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <div class="max-w-3xl mx-auto space-y-6">
+    <header>
+      <h1 style="font-size:1.4rem; margin-bottom:.25rem">Hype Declarative Login — No inline JS</h1>
+      <p class="muted">Attribute-driven login forms keep templates clean — the loader/auth client or Hype runtime wires behavior for you.</p>
+    </header>
+
+    <section class="card" aria-labelledby="minimal-declarative">
+      <h2 id="minimal-declarative" style="margin:0 0 .5rem 0">1) Minimal declarative login (no inline JS)</h2>
+      <p class="muted" style="margin:0 0 .75rem 0">
+        The loader auto-binds forms matching <code>form.hype-login-form</code> (or <code>#login-form</code>). Use normal inputs named <code>username</code> and <code>password</code>.
+      </p>
+
+      <!--
+        - class="hype-login-form" is recognized by the loader's auth binder
+        - inputs named "username" / "password" are mapped by the default credentialMapper
+        - [data-login-message] is used by the client to show status messages (configurable)
+        - No inline onclick/onsubmit attributes are used
+      -->
+      <form class="hype-login-form" method="post" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="u1">Username</label>
+          <input id="u1" name="username" type="text" required />
+        </div>
+
+        <div class="field">
+          <label for="p1">Password</label>
+          <input id="p1" name="password" type="password" required />
+        </div>
+
+        <div style="display:flex; gap:.75rem; align-items:center;">
+          <button type="submit">Sign in</button>
+          <div data-login-message aria-live="polite" class="muted"></div>
+        </div>
+
+        <p class="note">
+          Default POST endpoint is <code>/login</code>. To override, add <code>data-hype-post="/your/login"</code> on the <code>&lt;form&gt;</code>.
+        </p>
+      </form>
+
+      <div style="margin-top:.75rem">
+        <strong>Why this is declarative:</strong>
+        <ul style="margin:.25rem 0 0 1.05rem">
+          <li>No inline scripts on elements — just attributes and standard form fields.</li>
+          <li>Server integration is simple: return JSON such as <code>{ "ok": true, "user": {...} }</code>.</li>
+          <li>All requests use <code>credentials: 'same-origin'</code> so cookie-based sessions work.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="hype-declarative">
+      <h2 id="hype-declarative" style="margin:0 0 .5rem 0">2) Hype-style declarative chain (data-hype attributes)</h2>
+      <p class="muted" style="margin:0 0 .75rem 0">
+        If the Hype runtime is available, you can declare behavior using <code>data-hype-*</code> attributes. The runtime executes sequences like <code>["seq", ["toggle","loading"], ["pub","$fetch",null]]</code>.
+      </p>
+
+      <!--
+        - data-hype-state: local optimistic state
+        - data-hype-post: URL to POST
+        - data-hype-on-submit: declarative DSL sequence executed by Hype runtime
+        - data-hype-show: simple show/hide driven by state keys
+      -->
+      <form id="hype-login" class="card" data-hype-state='{"loading": false}' data-hype-post="/login" data-hype-on-submit='["seq", ["toggle", "loading"], ["pub", "$fetch", null]]'>
+        <h3 style="margin-top:0">Hype declarative flow</h3>
+
+        <div class="field">
+          <label for="uh">Username</label>
+          <input id="uh" name="username" type="text" />
+        </div>
+        <div class="field">
+          <label for="ph">Password</label>
+          <input id="ph" name="password" type="password" />
+        </div>
+
+        <div style="display:flex; gap:.75rem; align-items:center;">
+          <button type="submit">Sign in</button>
+          <span data-hype-show="!loading" class="muted">Ready</span>
+          <span data-hype-show="loading" class="muted">Signing in…</span>
+        </div>
+
+        <div data-login-message aria-live="polite" class="muted" style="margin-top:.5rem"></div>
+
+        <p class="note">
+          The demo runtime will POST and merge server response fields (e.g. <code>is_favorited</code> or a boolean success flag) back into state.
+        </p>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="server-tips">
+      <h2 id="server-tips" style="margin:0 0 .5rem 0">3) Server expectations & UX tips</h2>
+      <ul style="margin:.25rem 0 0 1.05rem">
+        <li>Return JSON from your login endpoint. Example:
+          <pre>{ "ok": true, "user": { "id": 1, "name": "Alice" } }</pre>
+        </li>
+        <li>On failure return <code>{ "ok": false, "error": "Invalid credentials" }</code>.</li>
+        <li>Ensure requests are handled with <code>credentials: 'same-origin'</code> to use cookie sessions.</li>
+      </ul>
+
+      <p class="note">
+        To customize the credential mapping (passkeys/webauthn), create a client via <code>createClient({ form: { credentialMapper } })</code> and wire it into the loader.
+      </p>
+    </section>
+
+    <footer class="muted" style="font-size:.9rem">
+      Notes:
+      <ul style="margin:.25rem 0 0 1.05rem">
+        <li>The loader auto-binds <code>form.hype-login-form</code> on DOMContentLoaded. No inline JS required in templates.</li>
+        <li>If you use the Hype runtime, attribute-based directives like <code>data-hype-on-submit</code> provide expressive declarative behavior.</li>
+      </ul>
+    </footer>
+  </div>
+
+  <!-- Load the non-blocking site loader which auto-binds auth forms and attempts to init Hype -->
+  <script type="module" src="/static/js/loader.js"></script>
+</body>
+</html>

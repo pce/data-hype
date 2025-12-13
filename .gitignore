@@ -1,8 +1,7 @@
 # Dependencies
 node_modules/
-docs-output/
 doc/
-
+docs-output/
 .pnpm-store/
 
 # Build outputs
@@ -43,3 +42,4 @@ yarn.lock
 bun.lockb
 _docs/
 docs-output/
+playground/dev-server/.tsbuildinfo

@@ -43,3 +43,11 @@ bun.lockb
 _docs/
 docs-output/
 playground/dev-server/.tsbuildinfo
+
+# Dev-server build outputs (do not commit compiled/generated assets)
+# - `tailwind.css` is produced from tailwind-input.css during the build step
+# - `/public/static/js` contains built runtime artifacts (loader.js, hype.js, etc.)
+playground/dev-server/public/tailwind.css
+playground/dev-server/public/static/js/*.js
+playground/dev-server/public/static/js/*.map
+playground/dev-server/public/static/css/*.css

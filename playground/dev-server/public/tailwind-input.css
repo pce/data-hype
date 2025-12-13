@@ -1,0 +1,70 @@
+/* Tailwind input for the Hype playground dev server
+ *
+ * Usage:
+ *   cd playground/dev-server
+ *   pnpm run build:css    # produces public/tailwind.css
+ *   pnpm run watch:css    # optional: rebuild on changes during development
+ *
+ * This file intentionally contains only the Tailwind directives and a few
+ * minimal project-specific base/component rules (for the dev examples).
+ *
+ * Keep larger or page-specific styles in the example HTML files (with nonces)
+ * or in separate CSS files to preserve CSP compatibility.
+ */
+
+/* Core Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Small base customizations used across the playground examples */
+@layer base {
+  :root {
+    --hype-bg: #f8fafc;
+    --hype-card: #ffffff;
+    --hype-text: #0f172a;
+    --hype-muted: #64748b;
+    --hype-accent: #0366d6;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--hype-bg);
+    color: var(--hype-text);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Utility used by the runtime during network requests */
+  .hype-loading {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+/* Small component helpers used in examples */
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-sm p-4;
+  }
+
+  .badge {
+    @apply inline-block px-3 py-1 rounded bg-blue-50 text-blue-700 font-semibold;
+  }
+
+  .mono {
+    @apply font-mono;
+  }
+}
+
+/* Example custom utilities (add more if the examples need them) */
+@layer utilities {
+  .truncate-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}

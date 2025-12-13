@@ -10,7 +10,9 @@
     "dev": "ts-node-dev --respawn --transpile-only --no-notify src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "lint": "eslint \"src/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\"",
+    "build:css": "tailwindcss -i public/tailwind-input.css -o public/tailwind.css --minify",
+    "watch:css": "tailwindcss -i public/tailwind-input.css -o public/tailwind.css --watch"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -30,6 +32,9 @@
     "@typescript-eslint/parser": "^6.3.0",
     "eslint": "^8.43.0",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "tailwindcss": "v3-lts",
+    "postcss": "^8.4.23",
+    "autoprefixer": "^10.4.14"
   }
 }

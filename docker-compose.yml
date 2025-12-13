@@ -89,7 +89,7 @@ services:
     # The compiled server is started via `node dist/server.js` (package script `start`).
     # If you prefer to run a watch/build process inside a container, use the separate
     # `backend-dev` service which runs `pnpm run dev` and writes output to ./dist.
-    command: sh -c "pnpm install --no-frozen-lockfile && pnpm run build && pnpm run start"
+    command: sh -c "pnpm install --no-frozen-lockfile && pnpm run build && pnpm run build:css && pnpm run start"
     stdin_open: true
     tty: true
 

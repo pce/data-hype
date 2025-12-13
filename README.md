@@ -1,6 +1,11 @@
 # Hype  _DRAFT_
 
-This is a technical prototype of pushless http 
+This is a technical prototype of pushless http server(less) client protocol for building low-latency, server-driven UIs with declarative client hooks.
+
+
+
+
+
 
 ## Scope
 
@@ -10,6 +15,7 @@ Hype is intentionally narrow: it focuses on server-driven markup, deterministic 
 - progressive enhanced server-rendered or static HTML  
 - deterministic client wiring layer for low-latency live updates
 - Hype provides primitives for HTTP-driven swaps and optional live patches.
+- MutationObserver
 - avoid binding user-supplied markup directly to code hooks
 - Keep client hooks declarative and resolved to known, pre-registered functions.
 - For richer client logic integrate Hype with a frontend framework; Hype remains the server-side fragment and live-patch primitive.
@@ -71,6 +77,8 @@ Hype forms/buttons work without JavaScript:
 - The server is the authority: application logic and access checks must remain server-side 
 - CSRF  Example Express middleware
 
+
+
 ```js
     import csurf from "csurf";
     
@@ -123,6 +131,7 @@ Hype forms/buttons work without JavaScript:
       next();
     }
 ```
+
 
 
 

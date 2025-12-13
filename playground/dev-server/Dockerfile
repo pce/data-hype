@@ -32,6 +32,13 @@ RUN pnpm install --no-frozen-lockfile --ignore-scripts
 # Copy source files into the image and build the project to produce `dist/`.
 COPY . .
 
+# Build Tailwind CSS so example pages can reference /tailwind.css.
+# This runs the `build:css` npm script defined in playground/dev-server/package.json
+# (produces `public/tailwind.css`). We allow the command to fail harmlessly in
+# minimal environments where the binary might not be present, but in CI/docker
+# the devDependencies include Tailwind so this will run successfully.
+RUN pnpm run build:css || true
+
 # Build the TypeScript output into dist/
 RUN pnpm run build
 

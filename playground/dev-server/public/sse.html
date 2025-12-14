@@ -1,152 +1,155 @@
 <!doctype html>
 <html lang="en">
-<head>
+<head></head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Live Stocks — SSE Example</title>
-  <meta name="description" content="Stocks ticker demo using Server-Sent Events (SSE). Progressive enhancement with initial JSON snapshot and external module client." />
+  <title>Live Stocks — SSE Example</</title>title>
+  <meta name="description" content="Stocks ticker demo using Server-Sent Events (SSE). Progressive enhancement with an initial JSON snapshot and an external ES module client." />
+
+  <!-- Tailwind utilities (project provides /tailwind.css) -->
   <link rel="stylesheet" href="/tailwind.css" />
 
-  <!-- Small page CSS. The server will replace %CSP_NONCE% with the per-request nonce. -->
-  <style>
-    :root{
-      --bg: #f8fafc;
-      --card: #ffffff;
-      --muted: #64748b;
-      --accent: #0366d6;
-      --up: #059669;
-      --down: #ef4444;
-      --radius: 10px;
-      --gap: 12px;
-    }
-
-    html,body{
-      height:100%;
-      margin:0;
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background:var(--bg);
-      color:#0f172a;
-    }
-
-    .container{max-width:980px;margin:28px auto;padding:0 16px}
-    .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:0 1px 2px rgba(2,6,23,0.06);margin-bottom:12px}
-    .muted{color:var(--muted)}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, monospace}
-    .price-up{color:var(--up);font-weight:600}
-    .price-down{color:var(--down);font-weight:600}
-    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .badge{padding:6px 10px;border-radius:8px;background:rgba(3,102,214,0.06);color:var(--accent);text-decoration:none;font-weight:600}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:left}
-    th{font-weight:700;color:#0f172a}
-    .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
-    .dot.online{background:var(--up)}
-    .dot.offline{background:var(--down)}
-    .small{font-size:0.9rem}
-    .link{ color:var(--accent); text-decoration:none }
-    footer.site-footer{ color:#94a3b8; text-align:center; margin-top:18px; font-size:13px; padding:12px 0 }
-    @media (max-width:640px){.controls{flex-direction:column;align-items:stretch}th,td{padding:8px}}
-  </style>
+  <!-- Shared demo CSS (external, CSP-friendly) -->
+  <link rel="stylesheet" href="/static/css/crud-demo.css" />
 </head>
-<body>
-  <main class="container" role="main" aria-labelledby="page-title">
-    <header class="card" role="banner" aria-label="SSE stocks header">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div>
-          <h1 id="page-title" style="margin:0;font-size:1.25rem">Live Stocks — SSE Example</h1>
-          <p class="muted small" style="margin-top:6px">Connects to a Server-Sent Events endpoint at <code class="mono">/stocks/sse</code>. Use <em></em>Simulate</em> for local demos.</p>
+<body class="bg-gradient-to-b from-teal-800 to-gray-600 min-h-screen text-slate-100 antialiased">
+  <div class="max-w-4xl mx-auto p-8">
+    <!-- Optional server-side include placeholder:
+         Replace with your layout include if you have templating support.
+         Example: <!--#include virtual="/layout/header.html" --> -->
+    <header class="mb-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div class="min-w-0">
+          <h1 class="text-4xl md:text-5xl leading-tight font-thin text-white tracking-tight">
+            Live Stocks — SSE Example
+            <span class="block mt-3 text-sm md:text-base font-light text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400">
+              Server-Sent Events (progressive, markup-first)
+            </span>
+          </h1>
+
+          <p class="mt-4 text-sm text-slate-200/80">
+            Connects to a Server-Sent Events endpoint at <code class="font-mono bg-white/5 px-1 rounded">/stocks/sse</code>.
+            Use "Simulate" to generate local updates when the backend SSE endpoint is not available.
+          </p>
         </div>
 
-        <div style="min-width:260px;text-align:right">
-          <nav aria-label="page navigation" style="margin-bottom:6px;display:flex;gap:8px;justify-content:flex-end">
-            <a class="link" href="/">← Back to examples</a>
-            <a class="link" href="/live.html">WebSocket example</a>
+        <div class="flex items-center gap-3">
+          <nav aria-label="page navigation" class="hidden sm:flex gap-3">
+            <a class="text-slate-200/80 hover:text-white text-sm" href="/">← Back to examples</a>
+            <a class="text-slate-200/80 hover:text-white text-sm" href="/live.html">WebSocket example</a>
           </nav>
 
-          <div class="controls" aria-hidden="false" style="justify-content:flex-end;">
-            <div style="display:flex;align-items:center;margin-bottom:6px;">
-              <span id="conn-dot" class="dot offline" aria-hidden="true"></span>
-              <span id="conn-text" class="muted mono">disconnected</span>
+          <div class="flex flex-col items-end gap-3">
+            <div class="flex items-center gap-3">
+              <span id="conn-dot" class="w-3 h-3 rounded-full bg-red-500" aria-hidden="true"></span>
+              <span id="conn-text" class="text-sm font-mono text-slate-200/90">disconnected</span>
             </div>
 
-            <div></div>
-              <button id="connectBtn" class="mono small" style="background:var(--accent);color:#fff;padding:8px 10px;border-radius:8px;border:0">Connect</button>
-              <button id="disconnectBtn" class="mono small" style="background:#e6eef6;color:var(--accent);padding:8px 10px;border-radius:8px;border:0;display:none">Disconnect</button>
-              <a class="badge" href="/live.html" style="margin-left:8px">WebSocket example</a>
+            <div class="flex items-center gap-2">
+              <button id="connectBtn" class="px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-sm">Connect</button>
+              <button id="disconnectBtn" class="hidden px-3 py-1 rounded-md bg-white/5 text-white text-sm">Disconnect</button>
             </div>
           </div>
         </div>
       </div>
 
-      <nav style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <a href="/" class="muted mono">Examples</a>
-        <a href="/live.html" class="muted mono">WebSocket</a>
-        <a href="/sse.html" class="muted mono">SSE</a>
+      <nav class="mt-6 flex gap-3 text-sm text-slate-200/70">
+        <a class="font-mono" href="/">Examples</a>
+        <a class="font-mono" href="/live.html">WebSocket</a>
+        <a class="font-mono" href="/sse.html">SSE</a>
       </nav>
     </header>
 
-    <section class="card" aria-labelledby="sse-info">
-      <h2 id="sse-info" style="margin:0 0 8px 0">Ticker (SSE)</h2>
-      <p class="muted" style="margin:0 0 12px 0">
-        Expected messages (JSON): <code class="mono">{ "type": "stocks:snapshot", "items": [...] }</code> or <code class="mono">{ "type": "stock:update", "symbol": "AAPL", "price": 123.45 }</code>.
-      </p>
+    <section aria-labelledby="sse-info" class="mb-6">
+      <div class="bg-white/5 rounded-xl p-6">
+        <h2 id="sse-info" class="text-lg font-medium text-white">Ticker (SSE)</h2>
+        <p class="text-sm text-slate-200/80 mt-2">
+          Expected messages (JSON): <code class="font-mono bg-white/5 px-1 rounded">{ "type": "stocks:snapshot", "items": [...] }</code>
+          or <code class="font-mono bg-white/5 px-1 rounded">{ "type": "stock:update", "symbol": "AAPL", "price": 123.45 }</code>.
+        </p>
 
-      <div style="overflow:auto">
-        <table aria-live="polite" role="table" aria-describedby="sse-info">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Price</th>
-              <th>Change</th>
-              <th class="muted">Last</th>
-            </tr>
-          </thead>
-          <tbody id="rows">
-            <!-- Progressive fallback rows so the page is useful without JS -->
-            <tr id="row-AAPL"><td class="mono"><strong>AAPL</strong></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
-            <tr id="row-GOOG"><td class="mono"><strong>GOOG</strong</strong>></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
-            <tr id="row-MSFT"><td class="mono"><strong>MSFT</strong></strong></td><td class="mono price">—</td><td class="mono change">—</td><td class="muted mono">—</td></tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="mt-4 overflow-auto bg-transparent rounded">
+          <table class="min-w-full text-left" role="table" aria-live="polite" aria-describedby="sse-info">
+            <thead class="border-b border-white/10">
+              <tr></tr>
+                <th class="pb-3 pr-6 text-sm font-medium text-slate-200">Symbol</th>
+                <th class="pb-3 pr-6 text-sm font-medium text-slate-200">Price</th>
+                <th class="pb-3 pr-6 text-sm font-medium text-slate-200">Change</th>
+                <th class="pb-3 text-sm font-medium text-slate-200">Last</th>
+              </tr>
+            </thead>
 
-      <div class="muted-note" style="margin-top:10px">If the backend does not expose <code class="mono">/stocks/sse</code>, enable <em>Simulate</em></em> to generate local updates.</div>
+            <tbody id="rows" class="divide-y divide-white/5">
+              <!-- Progressive fallback rows so the page is useful without JS -->
+              <tr id="row-AAPL" class="bg-white/3">
+                <td class="py-3"><strong class="font-mono text-white">AAPL</strong></td>
+                <td class="py-3 font-mono text-slate-200 price">—</td>
+                <td class="py-3 font-mono text-slate-200 change">—</td>
+                <td class="py-3 text-slate-400 font-mono">—</td>
+              </tr>
+              <tr id="row-GOOG">
+                <td class="py-3"><strong class="font-mono text-white">GOOG</strong></td>
+                <td class="py-3 font-mono text-slate-200 price">—</td>
+                <td class="py-3 font-mono text-slate-200 change">—</td>
+                <td class="py-3 text-slate-400 font-mono">—</td>
+              </tr>
+              <tr id="row-MSFT">
+                <td class="py-3"><strong class="font-mono text-white">MSFT</strong></td>
+                <td class="py-3 font-mono text-slate-200 price">—</td>
+                <td class="py-3 font-mono text-slate-200 change">—</td>
+                <td class="py-3 text-slate-400 font-mono">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label for="simulate" class="muted mono" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="simulate" aria-label="Simulate updates" /> Simulate updates locally</label>
-        <label for="symbol" class="muted mono" style="margin-left:8px">Subscribe:</label>
-        <input id="symbol" class="mono" placeholder="e.g. AAPL" style="padding:8px;border-radius:6px;border:1px solid #e6eef6" aria-label="Subscribe symbol" />
-        <button id="addSymbol" class="mono" style="padding:8px;border-radius:6px;border:1px solid #d1d5db">Add</button>
+        <div class="mt-4 text-sm text-slate-200/80">
+          If the backend does not expose <code class="font-mono bg-white/5 px-1 rounded">/stocks/sse</code>, enable "Simulate" to generate local updates.
+        </div>
+
+        <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <label for="simulate" class="flex items-center gap-2 text-sm text-slate-200">
+            <input id="simulate" type="checkbox" class="rounded text-teal-400" /> Simulate updates locally
+          </label>
+
+          <div class="sm:ml-auto flex items-center gap-2">
+            <label for="symbol" class="sr-only">Subscribe symbol</label>
+            <input id="symbol" placeholder="e.g. AAPL" aria-label="Subscribe symbol" class="px-3 py-2 rounded-md bg-white/5 text-white font-mono text-sm" />
+            <button id="addSymbol" class="px-3 py-2 rounded-md border border-white/10 text-white text-sm">Add</button>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="hints">
-      <h3 id="hints" style="margin:0 0 8px 0">Developer notes</h3>
-      <ul class="muted" style="margin:0;padding-left:18px">
-        <li>The dev backend can provide <code class="mono">/stocks/sse</code>. Each SSE event should contain a single JSON payload on the data: line.</li>
-        <li>Progressive</li> enhancement: this page contains an embedded JSON snapshot (below) and static rows so it is useful without JS or when the SSE endpoint is unavailable.</li>
-        <li>The client code is loaded as an external ES module (no inline scripts) to reduce CSP friction and support modern browsers.</li>
+    <section class="bg-white/5 rounded-xl p-6 mb-6">
+      <h3 class="text-sm font-medium text-white mb-3">Developer notes</h3>
+      <ul class="text-slate-200/80 list-disc list-inside space-y-1">
+        <li>The dev backend can provide <code class="font-mono bg-white/5 px-1 rounded">/stocks/sse</code>. Each SSE event should contain a single JSON payload on the data: line.</li>
+        <li>This page includes an embedded JSON snapshot and static rows so it remains useful without JS or when the SSE endpoint is unavailable.</li>
+        <li>The client is an external ES module (no inline scripts) to reduce CSP friction and work with modern browsers.</li>
       </ul>
     </section>
 
-    <footer class="card site-footer" role="contentinfo">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div class="muted">SSE — Live stocks demo</div>
-        <div style="text-align:right"><a class="link" href="/">← Back to examples</a></div>
+    <footer class="text-sm text-slate-300 text-center py-4">
+      <div class="flex flex-col sm:flex-row sm:justify-between gap-2">
+        <div>SSE — Live stocks demo</div>
+        <div><a class="text-slate-200 underline" href="/">← Back to examples</a></div>
       </div>
     </footer>
-  </main>
+  </div>
 
-  <!-- initial snapshot (progressive enhancement). This is application/json and not executed. -->
+  <!-- initial snapshot (progressive enhancement). This is application/json and not executed -->
   <script id="stocks-initial" type="application/json">
-    { "items": [
-      { "symbol": "AAPL", "price": 150.23, "change": 0.42, "timestamp": 1690000000000 },
-      { "symbol": "GOOG", "price": 2739.12, "change": -3.58, "timestamp": 1690000000000 },
-      { "symbol": "MSFT", "price": 322.45, "change": 1.05, "timestamp": 1690000000000 }
-    ] }
+{
+  "items": [
+    { "symbol": "AAPL", "price": 150.23, "change": 0.42, "timestamp": 1690000000000 },
+    { "symbol": "GOOG", "price": 2739.12, "change": -3.58, "timestamp": 1690000000000 },
+    { "symbol": "MSFT", "price": 322.45, "change": 1.05, "timestamp": 1690000000000 }
+  ]
+}
   </script>
 
-  <!-- External module: progressive-enhancement client (modern browsers) -->
+  <!-- External module: progressive-enhancement client (modern browsers). Keep external to satisfy CSP -->
   <script type="module" src="/static/js/stocks-sse.js"></script>
 </body>
 </html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype — CRUD table demo (markup-first)</title>
+  <meta name="description" content="Markup-first table CRUD demo for the Hype runtime. Declarative markup + templates; Hype runtime wires behaviour." />
+  <link rel="stylesheet" href="/tailwind.css"  />
+  <link rel="stylesheet" href="/static/css/crud-demo.css" />
+</head>
+<body class="bg-gray-50 text-slate-900 antialiased">
+  <noscript>
+    <div role="status" aria-live="polite"
+         class="max-w-3xl mx-auto p-4 mt-8 rounded border bg-yellow-50 text-yellow-800 text-sm">
+      This demo requires JavaScript to run. Enable JavaScript to initialize the Hype runtime and see the interactive example.
+    </div>
+  </noscript>
+
+  <main class="max-w-4xl mx-auto p-8" role="main" aria-labelledby="table-demo-title">
+    <header class="mb-6">
+      <h1 id="table-demo-title" class="text-2xl font-semibold">Hype — CRUD table demo (markup-first)</h1>
+      <p class="text-sm text-slate-600 mt-2">
+        Minimal, markup-first table demo. The page declares intent via data attributes and a template. The Hype runtime + plugins should
+        initialize and wire behavior (no demo-specific JS included here).
+      </p>
+    </header>
+
+    <!-- Declarative create form: the CRUD plugin should find forms with data-hype-crud="items-create" -->
+    <section aria-labelledby="create-heading" class="mb-4">
+      <h2 id="create-heading" class="sr-only">Create item</h2>
+      <form id="create-form" data-hype-crud="items-create" class="flex gap-3 items-center" aria-label="Create new item">
+        <input name="title" type="text" placeholder="Title" required autocomplete="off"
+               class="px-3 py-2 rounded border border-slate-200 bg-white text-sm" />
+        <input name="score" type="number" placeholder="Score" value="0"
+               class="px-3 py-2 rounded border border-slate-200 bg-white text-sm w-24" />
+        <button type="submit" class="px-3 py-2 rounded bg-sky-600 text-white text-sm">Create</button>
+        <div id="status" class="text-sm text-slate-500 ml-4" aria-live="polite">Loading…</div>
+      </form>
+    </section>
+
+    <!-- Table root: datatable plugin should call Hype's CRUD list and render rows from the template -->
+    <section aria-labelledby="items-heading" class="bg-white rounded-lg shadow-sm p-4">
+      <h2 id="items-heading" class="sr-only">Items</h2>
+
+      <div class="overflow-x-auto">
+        <table id="items-table"
+               role="table"
+               data-hype-crud="items"
+               data-hype-crud-endpoint="/api/items"
+               aria-describedby="status"
+               class="min-w-full divide-y divide-slate-100">
+          <caption class="sr-only">Items managed by the CRUD demo</caption>
+
+          <thead class="bg-slate-50">
+            <tr>
+              <th</tr> scope="col" class="px-4 py-2 text-left text-sm font-medium text-slate-600" style="width:80px">ID</th>
+              <th scope="col" class="px-4 py-2 text-left text-sm font-medium text-slate-600">Title</th>
+              <th scope="col" class="px-4 py-2 text-left text-sm font-medium text-slate-600" style="width:120px">Score</th>
+              <th scope="col" class="px-4 py-2 text-left text-sm font-medium text-slate-600" style="width:90px">Active</th>
+              <th scope="col" class="px-4 py-2 text-left text-sm font-medium text-slate-600" style="width:170px">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody id="items-body" class="bg-white divide-y divide-slate-100" aria-live="polite">
+            <!-- Rows will be rendered here by the datatable plugin -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Template: plugin should clone this and populate fields using safe DOM APIs (textContent, setAttribute) -->
+    <template id="item-row-tpl" aria-hidden="true">
+      <tr>
+        <td class="</tr>px-4 py-2 td-id" data-cell="id" role="cell"></td>
+        <td class="px-4 py-2 td-title" data-cell="title" role="cell"></td>
+        <td class="px-4 py-2 td-score" data-cell="score" role="cell"></td>
+        <td class="px-4 py-2 td-active" data-cell="active" role="cell"></td>
+        <td class="px-4 py-2 actions" data-cell="actions" role="cell">
+          <div class="flex gap-2">
+            <button data-action="toggle" type="button" class="px-2 py-1 rounded border text-sm">Toggle</button>
+            <button data-action="edit" type="button" class="px-2 py-1 rounded border text-sm">Edit</button>
+            <button data-action="delete" type="button" class="px-2 py-1 rounded border text-sm text-red-600">Delete</button>
+          </div>
+        </td>
+      </tr>
+    </template>
+
+    <div id="debug" class="mt-4 text-sm text-slate-500" aria-hidden="true"></div>
+  </main>
+
+  <!-- CSP-friendly bootstrap: external ESM that imports the runtime and calls init + plugin autowire -->
+  <script type="module" src="/static/js/crud-demo-bootstrap.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype Swipe CRUD (markup-first)</title>
+  <meta name="description" content="Markup-first swipe CRUD demo for the Hype runtime. The page declares intent via data attributes and templates; the Hype runtime + plugins wire behavior." />
+  <link rel="stylesheet" href="/static/css/crud-demo.css" />
+</head>
+<body>
+  <noscript>
+    <div role="alert" aria-live="assertive" style="margin:12px;padding:12px;background:#fff3cd;border:1px solid #ffeeba;color:#856404;border-radius:6px;">
+      This demo requires JavaScript. Please enable JavaScript to run the Hype runtime.
+    </div>
+  </noscript>
+
+  <main class="page" role="main" aria-labelledby="swipe-demo-title">
+    <header>
+      <h1 id="swipe-demo-title">Swipe CRUD — Markup-first demo</h1>
+      <p class="lead">Horizontal scroll-snap cards using markup-first wiring. This page trusts the Hype runtime and autowires the CRUD + datatable plugins via the shared bootstrap module.</p>
+    </header>
+
+    <!-- Declarative create form: Hype CRUD plugin will wire submission -->
+    <section class="controls" aria-label="Create item controls" style="margin-top:12px;">
+      <form id="create-form" data-hype-crud="items-create" aria-label="Create item" class="controls">
+        <input id="c-title" name="title" type="text" placeholder="Title" required autocomplete="off" />
+        <input id="c-score" name="score" type="number" placeholder="Score" value="0" />
+        <button type="submit" class="primary">Create</button>
+      </form>
+
+      <div class="hint" aria-hidden="true" style="margin-left:auto;">Demo endpoints: <code>/api/items</code> (list &amp; CRUD) and <code>/items/:id/toggle</code></div>
+    </section>
+
+    <!-- Root: datatable + crud plugin should render cards into the .cards container -->
+    <section id="swipe-root" class="snap-viewport" data-hype-crud="items" data-hype-crud-endpoint="/api/items" role="region" aria-label="Items carousel" style="margin-top:14px;">
+      <div class="cards" id="cards-list" aria-live="polite">
+        <!-- Cards will be rendered here by the datatable / crud plugin -->
+      </div>
+    </section>
+
+    <div id="status" class="msg" aria-live="polite">Loading…</div>
+
+    <!-- Template for a single card. Plugins should clone this template and populate using safe DOM APIs. -->
+    <template id="card-tpl" aria-hidden="true">
+      <article class="card snap-item" role="article" aria-label="item">
+        <div class="actions-bar" aria-hidden="true">
+          <button class="btn ghost" data-action="edit" aria-label="Edit">Edit</button>
+          <button class="btn warn" data-action="delete" aria-label="Delete">Delete</button>
+        </div>
+
+        <div class="meta">
+          <div class="id-badge td-id" aria-hidden="true"></div>
+          <div class="title td-title"></div>
+          <div class="score td-score"></div>
+        </div>
+
+        <div class="desc td-desc"></div>
+
+        <div class="hint">Swipe left to reveal actions • Drag a card &gt; 40% width to delete</div>
+      </article>
+    </template>
+
+    <div id="debug" class="msg" aria-hidden="true"></div>
+  </main>
+
+  <!-- CSP-friendly bootstrap: external ES module that imports Hype and autowires optional plugins (crud, datatable). -->
+  <script type="module" src="/static/js/crud-demo-bootstrap.js" defer></script>
+</body>
+</html>

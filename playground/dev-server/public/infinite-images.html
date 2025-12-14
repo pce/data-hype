@@ -38,20 +38,26 @@
     footer { color: #94a3b8; text-align:center; margin-top: 18px; font-size:13px; }
   </style>
 </head>
-<body>
-  <div class="wrap">
-    <header class="card" role="banner" aria-label="Hype Playground header">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div>
-          <h1 style="margin:0;font-size:1.25rem">Infinite Images</h1>
-          <p class="meta" style="margin:6px 0 0">An example demonstrating IntersectionObserver-driven infinite loading and a scroll-snap gallery. Works without the Hype runtime; if Hype & the behavior plugin are present you can use declarative attributes like <code>data-hype</code>-trigger="revealed"</code>.</p>
-        </div>
+
+<body class="bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+        <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
+            Infinite Images
+        <span class="ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
+            -trigger=revealed
+        </span>
+        </h1>
+        <p class="meta" style="margin:6px 0 0">An example demonstrating IntersectionObserver-driven infinite loading and a gallery. Works without the Hype runtime; if Hype & the behavior plugin are present you can use declarative attributes like <code>data-hype</code>-trigger="revealed"</code>.</p>
         <div class="controls" aria-hidden="true">
           <a class="btn" href="/">Back</a>
           <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
         </div>
-      </div>
+        <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
+      <!--<p class="text-gray-600 text-thin">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
     </header>
+
+
 
     <section class="card" aria-labelledby="gallery-heading">
       <h2 id="gallery-heading" style="margin:0 0 8px 0">Gallery</h2>
@@ -72,7 +78,6 @@
              - data-hype-get="" (optional) => fetch URL template with {page} interpolation
              - data-hype-target="#imageGrid" => where appended nodes go
              - data-hype-template="#photo-tpl" => which template to use
-             The page includes a tiny fallback implementation when the full Hype runtime is not present.
         -->
         <div id="sentinel" class="sentinel" aria-hidden="true"
              data-hype-trigger="infinite:8:repeat"

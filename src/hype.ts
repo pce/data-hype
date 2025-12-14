@@ -350,6 +350,59 @@ export class Hype {
   }
 
   /**
+   * Deferred autowire helper.
+   *
+   * Dynamically imports optional plugin factories when DOM markers indicate they are needed.
+   * This prevents hard-wiring optional UI plugins into the core runtime and keeps Hype minimal.
+   *
+   * Usage (composition root / demo):
+   *   // Let Hype inspect the DOM and attach optional plugins lazily:
+   *   await hype.autowirePlugins();
+   *
+   * Options:
+   *   { crud: false }                   // disable autowire for crud
+   *   { crud: { endpoint: '/api/items' } // pass config to crud factory
+   */
+  public async autowirePlugins(opts?: { crud?: boolean | Record<string, any>; datatable?: boolean | Record<string, any> }): Promise<void> {
+    if (typeof document === "undefined") return;
+    const cfg = opts || {};
+    try {
+      // If markup indicates a CRUD root and crud autowire is enabled, dynamically import & attach.
+      const shouldAutoCrud = cfg.crud !== false && !!document.querySelector("[data-hype-crud]");
+      if (shouldAutoCrud) {
+        try {
+          const mod = await import("./plugins/crud/index");
+          const factory = (mod && (mod.default || (mod as any).createCrudPlugin)) as any;
+          if (typeof factory === "function") {
+            const pluginCfg = typeof cfg.crud === "object" ? cfg.crud : {};
+            this.attach(factory(pluginCfg));
+          }
+        } catch (e) {
+          if (this.config.debug) console.warn("autowirePlugins: failed to load crud plugin", e);
+        }
+      }
+
+      // Datatable UI: use same DOM marker (data-hype-crud) for demo roots. Datatable autowire can be
+      // disabled independently via opts.datatable = false.
+      const shouldAutoDt = cfg.datatable !== false && !!document.querySelector("[data-hype-crud]");
+      if (shouldAutoDt) {
+        try {
+          const mod = await import("./plugins/ui/datatable");
+          const factory = (mod && (mod.default || (mod as any).createDataTablePlugin)) as any;
+          if (typeof factory === "function") {
+            const pluginCfg = typeof cfg.datatable === "object" ? cfg.datatable : {};
+            this.attach(factory(pluginCfg));
+          }
+        } catch (e) {
+          if (this.config.debug) console.warn("autowirePlugins: failed to load datatable plugin", e);
+        }
+      }
+    } catch (e) {
+      if (this.config.debug) console.warn("autowirePlugins failed", e);
+    }
+  }
+
+  /**
    * Destroy Hype instance, removing all listeners
    */
   destroy(): void {

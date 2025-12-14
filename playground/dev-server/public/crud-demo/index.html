@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-</head>8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype — CRUD</title> demos (markup-first)</title>
+  <meta name="description" content="Collection of markup-first CRUD demos for the Hype runtime. Each demo relies on declarative markup and a small CSP-friendly bootstrap module." />
+  <link rel="stylesheet" href="/static/css/crud-demo.css" />
+</head>
+<body>
+  <noscript>
+    <div class="msg" role="status" aria-live="polite">
+      This demo collection requires JavaScript. Please enable JavaScript to run the Hype runtime and view the interactive demos.
+    </div>
+  </noscript>
+
+  <main class="page" role="main" aria-labelledby="crud-demos-title">
+    <header>
+      <h1 id="crud-demos-title">Hype — CRUD demos (markup-first)</h1>
+      <p class="lead">
+        A small set of markup-first CRUD demos. Each page contains declarative HTML (data attributes + templates).
+        The Hype runtime and optional plugins wire behavior — demos intentionally avoid inline scripts/styles for CSP compatibility.
+      </p>
+    </header>
+
+    <nav aria-labelledby="demos-heading" class="controls" style="margin-top:16px;">
+      <h2 id="demos-heading" class="sr-only">Available demos</h2>
+      <ul>
+        <li><a href="/crud-demo/table.html">Table — classic rows &amp; actions</a></li>
+        <li><a href="/crud-demo/list.html">List — stacked list rendering</a></li>
+        <li><a href="/crud-demo/swipe-crud.html">Swipe — horizontal card carousel</a></li>
+      </ul>
+    </nav>
+
+    <section aria-labelledby="notes" style="margin-top:18px;">
+      <h2 id="notes" class="sr-only">Developer notes</h2>
+      <p class="msg">
+        These demos expect an ESM Hype runtime at <code>/static/js/hype.js</code>. The external bootstrap module
+        <code>/static/js/crud-demo-bootstrap.js</code> initializes Hype and autowires optional plugins (crud, datatable).
+        This keeps the demo pages minimal and CSP-friendly (no inline scripts or eval).
+      </p>
+      <p class="msg">
+        To run locally: build an ESM Hype runtime, serve it at <code>/static/js/hype.js</code>, then open one of the demo pages above.
+        Inspect the browser console for initialization logs from the bootstrap module.
+      </p>
+    </section>
+
+    <footer style="margin-top:18px;">
+      <small class="text-muted">Markup-first — declare intent in HTML and trust the runtime to wire behavior. Keep demos DRY &amp; KISS.</small>
+    </footer>
+  </main>
+
+  <!-- CSP-friendly bootstrap module: imports Hype (ESM) and autowires optional plugins used by the demos -->
+  <script type="module" src="/static/js/crud-demo-bootstrap.js" defer></script>
+</body>
+</html>

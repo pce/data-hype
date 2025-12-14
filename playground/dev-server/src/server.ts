@@ -602,9 +602,122 @@ app.get("/me", (req, res) => {
    Public API: items
    ------------------------- */
 
+// REST CRUD endpoints for /api/items
+// List
 app.get("/api/items", (_req, res) => {
   const list = Object.values(items);
   res.json({ ok: true, items: list });
+});
+
+// Get single item
+app.get("/api/items/:id", (req, res) => {
+  const id = String(req.params.id || "");
+  const item = items[id];
+  if (!item) {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return;
+  }
+  res.json({ ok: true, item });
+});
+
+// Create
+app.post("/api/items", express.json(), (req, res) => {
+  // Accept optional natural/string id via body.id; fallback to numeric generation
+  const body = req.body || {};
+  const providedId = body.id;
+  const { title, score = 0, active = false } = body;
+
+  if (!title || typeof title !== "string") {
+    res.status(400).json({ ok: false, error: "title required" });
+    return;
+  }
+
+  // Determine id: prefer provided natural id (string) when present and non-empty,
+  // otherwise generate a next numeric id (simple incremental)
+  let id: string | null = null;
+  if (typeof providedId !== "undefined" && providedId !== null) {
+    // accept numeric or string IDs but store as string
+    const asStr = String(providedId).trim();
+    if (asStr.length > 0) {
+      // Prevent accidental overwrite: if id already exists, return 409
+      if (items[asStr]) {
+        res.status(409).json({ ok: false, error: "id already exists" });
+        return;
+      }
+      id = asStr;
+    }
+  }
+
+  if (!id) {
+    // Generate next numeric id (simple incremental)
+    const numericIds = Object.keys(items)
+      .map((k) => Number(k))
+      .filter((n) => !Number.isNaN(n));
+    const next = (numericIds.length ? Math.max(...numericIds) : 0) + 1;
+    id = String(next);
+    // ensure no collision with natural ids (rare) - increment until free
+    while (items[id]) {
+      id = String(Number(id) + 1);
+    }
+  }
+
+  const item = { id, title: String(title), score: Number(score) || 0, active: !!active };
+  items[id] = item;
+
+  // Broadcast a patch/html snapshot so live clients can update
+  try {
+    const regionHtml = renderItemsFragment();
+    broadcastPatch("items-list-1", regionHtml);
+  } catch (e) {
+    // best-effort
+  }
+
+  res.status(201).json({ ok: true, item });
+});
+
+// Update (replace/partial accepted)
+app.put("/api/items/:id", express.json(), (req, res) => {
+  const id = String(req.params.id || "");
+  const item = items[id];
+  if (!item) {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return;
+  }
+
+  const { title, score, active } = req.body || {};
+  if (title !== undefined) item.title = String(title);
+  if (score !== undefined) item.score = Number(score);
+  if (active !== undefined) item.active = !!active;
+
+  try {
+    const regionHtml = renderItemsFragment();
+    broadcastPatch("items-list-1", regionHtml);
+  } catch (e) {
+    // ignore
+  }
+
+  res.json({ ok: true, item: { ...item } });
+});
+
+// Delete
+app.delete("/api/items/:id", (req, res) => {
+  const id = String(req.params.id || "");
+  const item = items[id];
+  if (!item) {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return;
+  }
+
+  delete items[id];
+
+  try {
+    const regionHtml = renderItemsFragment();
+    broadcastPatch("items-list-1", regionHtml);
+  } catch (e) {
+    // ignore
+  }
+
+  res.json({ ok: true });
 });
 
 // Jobs API for the favorite button examples

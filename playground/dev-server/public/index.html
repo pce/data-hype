@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hype Playground</title> — Dev</title>
+  <title>Hype Playground</title>
   <meta name="description" content="Hype playground examples (development). Progressive, CSP-friendly examples using declarative templates." />
 
   <!-- Dev CSP: module scripts & same-origin styles allowed. Adjust for production. -->
@@ -22,20 +22,43 @@
   - `data-hype-class-...` applies classes on the body reactively
 -->
 <body
+  class="bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400"
   data-hype-state='{"dark":false}'
   data-hype-class-earthone-dark='["get","dark"]'
   data-hype-class-earthone-light='["!","get","dark"]'
 >
+
+
   <div class="wrap container mx-auto px-6 py-8">
-    <header class="card mb-6" role="banner" aria-label="Hype Playground header">
+    <!--<header class="card mb-6" role="banner" aria-label="Hype Playground header">
       <div class="flex items-center justify-between gap-6">
         <div class="flex items-center gap-4">
           <div class="logo rounded-lg flex items-center justify-center w-12 h-12 text-white font-bold bg-gradient-to-br from-orange-500 to-rose-500">H</div>
           <div></div>
             <h1 class="text-lg font-semibold m-0">Hype — Playground (dev)</h1>
-            <p class="text-sm text-muted m-0">Progressive, CSP-friendly examples using declarative templates.</p>
+            <p class="text-sm text-muted m-0">.</p>
           </div>
-        </div>
+        </div>-->
+
+            <div class="controls" aria-hidden="true">
+              <a class="btn" href="/">Back</a>
+              <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
+            </div>
+
+          <div class="max-w-4xl mx-auto">
+            <header class="mb-8">
+                <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
+                    Hype
+                <span class="ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
+                    data-hype-
+                </span>
+                </h1>
+                <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
+              <!--<p class="">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
+              <p class="text-gray-600 text-thin" style="margin:6px 0 0">Progressive, CSP-friendly examples using declarative templates.</p>
+            </header>
+
+
 
         <div class="flex items-center gap-3">
           <nav aria-label="Quick examples" class="flex gap-3">

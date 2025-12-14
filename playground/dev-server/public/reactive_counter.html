@@ -17,15 +17,29 @@
     /* counter value will be written to the element's textContent by JS; no ::after-based rendering */
   </style>
 </head>
-<body class="bg-gray-50 p-8">
-  <div class="max-w-4xl mx-auto space-y-12">
-    <header class="text-center mb-12">
-      <h1 class="text-4xl font-bold text-gray-900 mb-2">Hype Reactive Examples</h1>
-      <p class="text-gray-600">reactive state for Hype</p>
+<body class="bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400">
+
+    <div class="controls" aria-hidden="true">
+      <a class="btn" href="/">Back</a>
+      <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
+    </div>
+
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+        <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
+            Hype Reactive
+        <span class="ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
+            data-hype-show
+        </span>
+        </h1>
+        <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
+      <!--<p class="">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
+      <p class="text-gray-600 text-thin" style="margin:6px 0 0">An example demonstrating reactive state for Hype- and behavior driven with declarative attributes like <code>data-hype-state</code>.</p>
     </header>
 
+
     <!-- Example: Counter -->
-    <section class="bg-white rounded-lg shadow p-6">
+    <section class="bg-white rounded-lg shadow p-6 mb-4">
       <h2 class="text-2xl font-semibold mb-4">Counter</h2>
       <p class="text-gray-600 mb-4">Simple counter with increment/decrement.</p>
 

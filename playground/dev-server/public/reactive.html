@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="min-h-screen">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +16,7 @@
   </style>
 </head>
 
-<body class="bg-gray-400 p-8 bg-gradient-to-b from-teal-800 to-gray-400">
+<body class="min-h-screen bg-gradient-to-b from-teal-800 to-gray-400 p-8">
   <div class="max-w-4xl mx-auto">
     <header class="mb-8">
         <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
@@ -25,18 +25,11 @@
             trigger revealed
         </span>
         </h1>
-        <p class="text-teal-200 text-xs " >Alpine.js-inspired reactive state for Hype <code>data-hype-state="{}"</code>.</p>
-        <div class="controls" aria-hidden="true">
-          <a class="btn" href="/">Back</a>
-          <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
-        </div>
-        <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
-      <!--<p class="text-gray-600 text-thin">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
+        <div class="text-teal-400 text-xs " ><!--Alpine.js-inspired -->reactive state for Hype <code>data-hype-state="{}"</code>.</div>
     </header>
 
-
     <!-- Example 1: Simple Toggle -->
-    <section class="bg-white rounded-lg shadow p-6">
+    <section class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-2xl font-semibold mb-4">1. Simple Toggle</h2>
       <p class="text-gray-600 mb-4">Toggle state without any server interaction.</p>
 
@@ -59,7 +52,7 @@
     </section>
 
     <!-- Example 2: Favorite/Heart Button -->
-    <section class="bg-white rounded-lg shadow p-6">
+    <section class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-2xl font-semibold mb-4">2. Favorite Button (Heart Icon)</h2>
       <p class="text-gray-600 mb-4">Toggle favorite state with visual feedback.</p>
 
@@ -95,14 +88,14 @@
         </button>
 
         <p class="text-sm text-gray-600">
-          Status: <span data-hype-show="favorited" class="text-red-500 font-medium">❤️ Favorited</span>
+          Status: <span data-hype-show="favorited" class="text-red-500 font-medium">Favorited</span>
           <span data-hype-show="!favorited" class="text-gray-400">Not favorited</span>
         </p>
       </div>
     </section>
 
     <!-- Example 3: Favorite with Server Sync -->
-    <section class="bg-white rounded-lg shadow p-6">
+    <section class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-2xl font-semibold mb-4">3. Favorite with Server Sync</h2>
       <p class="text-gray-600 mb-4">Toggle favorite and sync with server (simulated).</p>
 
@@ -140,13 +133,13 @@
         </button>
 
         <div data-hype-show="syncing" class="text-sm text-blue-600">
-          ⏳ Syncing with server...
+           Syncing with server...
         </div>
       </div>
     </section>
 
     <!-- Example 4a: Counter (DSL JSON) -->
-    <section class="bg-white rounded-lg shadow p-6">
+    <section class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-2xl font-semibold mb-4">4a. Counter (DSL JSON)</h2>
       <p class="text-gray-600 mb-4">Simple counter using explicit DSL JSON expressions (safe, parsed via JSON).</p>
 
@@ -450,29 +443,9 @@
   </div>
 
   <!-- Load Hype library -->
-  <script nonce="%CSP_NONCE%" type="module">
-    // KISS loader: try to import the runtime and call init(); otherwise install a tiny DOM fallback.
-    (async () => {
-      try {
-        const mod = await import('/static/js/hype.js');
-        const hype = mod?.hype || mod?.default || mod;
-        if (hype && typeof hype.init === 'function') {
-          try {
-            hype.init();
-            console.log('Hype runtime initialized.');
-            return;
-          } catch (e) {
-            console.warn('hype.init() threw', e);
-          }
-        }
-      } catch (err) {
-        // Import failed (runtime not available) — fall through to fallback.
-        console.debug('Hype import failed', err);
-      }
-
-
-      console.log('No Hype runtime detected — using lightweight DOM fallback.');
-    })();
+  <script nonce="%CSP_NONCE%" type="module" async>
+    const m = await import('/static/js/hype.js');
+    (typeof m.createHype === 'function' ? m.createHype() : (m.default ?? m)).init?.();
   </script>
 </body>
 </html>

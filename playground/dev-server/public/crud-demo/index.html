@@ -8,7 +8,10 @@
   <link rel="stylesheet" href="/tailwind.css" />
   <link rel="stylesheet" href="/static/css/crud-demo.css" />
 </head>
-<body class="bg-gradient-to-b from-teal-800 to-gray-600 min-h-screen text-slate-100 antialiased">
+<body style="min-height:calc(var(--vh,1vh)*100)" class="bg-gradient-to-b from-teal-800 to-gray-600 ...">
+<!--<body class="min-h-[100dvh] bg-gradient-to-b from-teal-800 to-gray-600 text-slate-100 antialiased">-->
+<!--<body class="min-h-screen bg-gradient-to-b from-teal-800 to-gray-600 text-slate-100 antialiased">-->
+<!--<body class="min-h-[100dvh] bg-gradient-to-b from-teal-800 to-gray-600   text-slate-100 antialiased">-->
   <div class="max-w-4xl mx-auto p-8">
     <header class="mb-8">
       <h1 class="text-4xl md:text-5xl leading-tight font-thin tracking-tight text-white">
@@ -42,7 +45,7 @@
             <div class="text-sm text-slate-400">A table-driven CRUD example using a declarative create form and a template for rows.</div>
           </li>
           <li>
-            <a class</li>="text-blue-300 hover:underline" href="/crud-demo/list.html">List — stacked list rendering</a>
+            <a class="text-blue-300 hover:underline" href="/crud-demo/list.html">List — stacked list rendering</a>
             <div class="text-sm text-slate-400">A stacked list demo (card-style) rendered from a template; markup-first and accessible.</div>
           </li>
           <li></li>
@@ -55,17 +58,17 @@
       <section class="bg-white/5 rounded-xl p-6 mb-6">
         <h3 class="text-lg font-medium text-white mb-3">Developer notes</h3>
         <ol class="list-decimal list-inside space-y-2 text-slate-200">
-          <li></li>
+          <li>
             Ensure an ESM Hype runtime is available at <code class="font-mono bg-white/5 px-1 rounded">/static/js/hype.js</code> (your build step should produce this).
           </li>
           <li>
-            The</li> demos rely on a small, CSP-friendly bootstrap module at <code class="font-mono bg-white/5 px-1 rounded">/static/js/crud-demo-bootstrap.js</code> which imports the runtime and calls <code class="font-mono">hype.init()</code> and plugin autowiring when available.
+            The demos rely on a small, CSP-friendly bootstrap module at <code class="font-mono bg-white/5 px-1 rounded">/static/js/crud-demo-bootstrap.js</code> which imports the runtime and calls <code class="font-mono">hype.init()</code> and plugin autowiring when available.
           </li>
           <li>
             Tailwind and the shared demo stylesheet</li> live at <code class="font-mono bg-white/5 px-1 rounded">/tailwind.css</code> and <code class="font-mono bg-white/5 px-1 rounded">/static/css/crud-demo.css</code>. Keep styles external for strict CSP setups.
           </li>
           <li>
-            Run</li> the dev environment locally (example): <code class="font-mono bg-white/5 px-1 rounded">./dev.sh start</code>. If you see 404s for the runtime or bootstrap, build the frontend artifacts and ensure they are copied into the backend public directory.
+            Run the dev environment locally (example): <code class="font-mono bg-white/5 px-1 rounded">./dev.sh start</code>. If you see 404s for the runtime or bootstrap, build the frontend artifacts and ensure they are copied into the backend public directory.
           </li>
         </ol>
       </section>

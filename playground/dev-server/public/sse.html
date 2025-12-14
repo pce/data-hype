@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
-<head></head>
+<head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Live Stocks — SSE Example</</title>title>
+  <title>Live Stocks — SSE Example</title>
   <meta name="description" content="Stocks ticker demo using Server-Sent Events (SSE). Progressive enhancement with an initial JSON snapshot and an external ES module client." />
 
   <!-- Tailwind utilities (project provides /tailwind.css) -->
@@ -12,11 +12,8 @@
   <!-- Shared demo CSS (external, CSP-friendly) -->
   <link rel="stylesheet" href="/static/css/crud-demo.css" />
 </head>
-<body class="bg-gradient-to-b from-teal-800 to-gray-600 min-h-screen text-slate-100 antialiased">
+<body class="min-h-svh bg-gradient-to-b from-teal-800 to-gray-600  text-slate-100 antialiased">
   <div class="max-w-4xl mx-auto p-8">
-    <!-- Optional server-side include placeholder:
-         Replace with your layout include if you have templating support.
-         Example: <!--#include virtual="/layout/header.html" --> -->
     <header class="mb-8">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div class="min-w-0">
@@ -138,18 +135,7 @@
     </footer>
   </div>
 
-  <!-- initial snapshot (progressive enhancement). This is application/json and not executed -->
-  <script id="stocks-initial" type="application/json">
-{
-  "items": [
-    { "symbol": "AAPL", "price": 150.23, "change": 0.42, "timestamp": 1690000000000 },
-    { "symbol": "GOOG", "price": 2739.12, "change": -3.58, "timestamp": 1690000000000 },
-    { "symbol": "MSFT", "price": 322.45, "change": 1.05, "timestamp": 1690000000000 }
-  ]
-}
-  </script>
 
-  <!-- External module: progressive-enhancement client (modern browsers). Keep external to satisfy CSP -->
-  <script type="module" src="/static/js/stocks-sse.js"></script>
+
 </body>
 </html>

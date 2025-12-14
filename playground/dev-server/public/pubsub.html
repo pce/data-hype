@@ -3,289 +3,110 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pub/Sub — Hype Playground</title>
+  <title>— Hype Playground</title>
   <meta name="description" content="Pub/Sub example using Hype pubsub plugin with a DOM CustomEvent bridge so the page works without the runtime." />
-  <link rel="stylesheet" href="/tailwind.css">
-  <style>
-    :root{
-      --bg: #f8fafc;
-      --card: #ffffff;
-      --muted: #64748b;
-      --accent: #0366d6;
-      --radius: 10px;
-      --gap: 12px;
-    }
-    html,body{
-      height:100%;
-      margin:0;
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background:var(--bg);
-      color:#0f172a;
-    }
-    .container { max-width: 980px; margin: 28px auto; padding: 18px; }
-    .card { background: var(--card); border-radius: var(--radius); padding: 18px; box-shadow: 0 1px 2px rgba(2,6,23,0.06); margin-bottom: 12px; }
-    .muted { color: var(--muted); }
-    .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size:0.95rem; }
-    .topic { padding:8px 12px; border-radius:8px; border:1px solid #eef2ff; background:#fff; display:inline-flex; gap:8px; align-items:center; }
-    .list { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
-    .subscriber { flex: 1 1 300px; border-radius:8px; padding:12px; background:#fcfdff; border:1px solid #eef2f8; min-width:220px; }
-    .entry { padding:8px 10px; border-radius:6px; margin-top:8px; background:#fff; border:1px solid #f1f5f9; }
-    .small { font-size:0.9rem; }
-    .badge { display:inline-block; padding:6px 10px; border-radius:8px; background: rgba(3,102,214,0.06); color:var(--accent); font-weight:600; text-decoration:none; }
-    .btn { padding:6px 10px; border-radius:8px; border:0; cursor:pointer; }
-    .btn-ghost { background:#fff; border:1px solid #e6eef6; color:#0f172a; }
-    .btn-primary { background:var(--accent); color:#fff; }
-    .muted-note { color:var(--muted); font-size:0.9rem; margin-top:8px; }
-    @media (max-width:720px){ .controls{ gap:6px } .list{ flex-direction:column } }
-  </style>
+  <link rel="stylesheet" href="/tailwind.css" />
 </head>
-<body>
-  <main class="container" role="main" aria-labelledby="</body>page-title">
-    <header class="card" role="banner" aria-label="Pub/Sub demo header">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-          <h1 id="page-title" style="margin:0;font-size:1.25rem">Pub/Sub Demo</h1>
-          <p class="muted small" style="margin-top:6px;">
-            Demonstrates</div> the Hype pubsub plugin (if loaded) and a DOM CustomEvent bridge so the page works without the runtime.
-            The bridge listens for <code class="mono">hype:pub</code> CustomEvents of shape <code class="mono">{ detail: { topic, payload } }</code>.
-          </p>
-        </div>
-
-        <div class="controls" aria-hidden="false">
-          <a class="badge" href="/live.html" aria-label="Live ticker example">Live ticker</a>
-          <a class="badge" href="/sse.html" style="margin-left:6px;" aria-label="SSE example">SSE</a>
-        </div>
-      </div>
+<body class="min-h-svh  bg-gradient-to-b from-teal-800 to-gray-400 p-8 text-slate-900">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8 text-white">
+      <h1 class="text-4xl md:text-5xl font-thin tracking-tight">
+        Hype Pub/Sub
+        <span class="block mt-2 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-rose-400 text-base">markup-first · </span>
+      </h1>
+      <p class="mt-3 text-sm text-teal-200">
+        Behavior is declared via <code class="font-mono text-xs bg-white/10 px-1 rounded">data-hype-*</code> attributes.
+        This demo demonstrates runtime network behavior.
+      </p>
     </header>
 
-    <section class="card" aria-labelledby="pubcontrols">
-      <h2 id="pubcontrols" style="margin:0 0 8px 0">Publishers</h2>
-      <p class="muted small" style="margin:0 0 10px 0">Two ways to publish events on this page:</p>
+    <!-- Publishers -->
+    <section aria-labelledby="pubcontrols" class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 id="pubcontrols" class="text-lg font-semibold mb-2">Publishers</h2>
+      <p class="text-sm text-gray-500 mb-4">Two ways to publish events on this page: markup-driven (requires Hype) or DOM bridge (always works).</p>
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-        <!-- Markup-first publish (no-op without Hype) -->
-        <div class="topic" title="Markup-first Hype publish (no-op if Hype not present)">
-          <strong class="mono">Markup publish</strong>
-          <div style="display:flex;gap:8px;margin-left:8px">
+      <div class="flex flex-wrap gap-4 items-start">
+        <!-- Markup-first publish -->
+        <div class="inline-flex items-center gap-4 p-3 rounded-lg border bg-white/60">
+          <div class="font-mono text-sm font-medium">Markup publish</div>
+          <div class="flex gap-2">
             <button
               type="button"
               data-hype-on-click='["pub","news", {"text":"Breaking: markup publish"}]'
-              class="mono small btn btn-ghost"
+              class="text-sm font-mono px-3 py-1 border rounded-md hover:bg-gray-50"
               aria-label="Publish news via Hype"
             >News (via Hype)</button>
 
             <button
               type="button"
               data-hype-on-click='["pub","price", {"symbol":"AAPL","price":null}]'
-              class="mono small btn btn-ghost"
+              class="text-sm font-mono px-3 py-1 border rounded-md hover:bg-gray-50"
               aria-label="Publish price via Hype"
             >Price (via Hype)</button>
           </div>
         </div>
 
         <!-- DOM publish always works -->
-        <div class="topic" style="margin-left:8px" aria-hidden="false">
-          <strong class="mono">DOM publish</strong>
-          <div style="display:flex;gap:8px;margin-left:8px">
-            <button id="domNews" type="button" class="mono small btn btn-primary" aria-label="Publish news (DOM)">Publish News (DOM)</button>
-            <button id="domPrice" type="button" class="mono small btn btn-primary" aria-label="Publish price (DOM)">Publish Price (DOM)</button>
+        <div class="inline-flex items-center gap-4 p-3 rounded-lg border bg-white/60">
+          <div class="font-mono text-sm font-medium">DOM publish</div>
+          <div class="flex gap-2">
+            <button id="domNews" type="button" class="text-sm px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700" aria-label="Publish news (DOM)">Publish News (DOM)</button>
+            <button id="domPrice" type="button" class="text-sm px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700" aria-label="Publish price (DOM)">Publish Price (DOM)</button>
           </div>
         </div>
 
         <!-- Custom publish -->
-        <div style="display:flex;gap:8px;align-items:center;margin-left:8px;flex:1 1 420px">
-          <input id="customTopic" class="mono" placeholder="topic e.g. chat" style="padding:8px;border-radius:8px;border:1px solid #e6eef6;flex:0 0 140px" aria-label="Custom topic" />
-          <input id="customPayload" class="mono" placeholder='payload JSON e.g. {"msg":"hi"}' style="padding:8px;border-radius:8px;border:1px solid #e6eef6;width:100%;flex:1 1 320px" aria-label="Custom payload JSON" />
-          <button id="customPublish" type="button" class="mono small btn btn-primary" aria-label="Publish custom event">Publish</button>
+        <div class="flex-1 min-w-[260px] flex items-center gap-2 p-3 rounded-lg border bg-white/60">
+          <input id="customTopic" class="font-mono text-sm px-3 py-1 border rounded-md w-36" placeholder="topic e.g. chat" aria-label="Custom topic" />
+          <input id="customPayload" class="font-mono text-sm px-3 py-1 border rounded-md flex-1" placeholder='payload JSON e.g. {"msg":"hi"}' aria-label="Custom payload JSON" />
+          <button id="customPublish" type="button" class="text-sm px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700">Publish</button>
         </div>
       </div>
 
-      <p class="muted-note">Markup-first examples show how Hype keeps behavior declarative. Use the DOM buttons to publish immediately without Hype present.</p>
+      <p class="mt-3 text-xs text-gray-500">Markup-first buttons become active when the runtime is present. The DOM bridge dispatches <code class="font-mono text-xs">new CustomEvent('hype:pub', { detail: { topic, payload } })</code>.</p>
     </section>
 
-    <section class="card" aria-labelledby="subscribers">
-      <h2 id="subscribers" style="margin:0 0 8px 0">Subscribers</h2>
+    <!-- Subscribers -->
+    <section aria-labelledby="subscribers" class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 id="subscribers" class="text-lg font-semibold mb-2">Subscribers</h2>
 
-      <div class="list" role="region" aria-live="polite" aria-atomic="false">
-        <div class="subscriber" id="newsSub" aria-label="News subscriber">
-          <h3 style="margin:0">News</h3>
-          <div id="newsList" class="small" style="margin-top:8px"></div>
-          <div style="margin-top:10px"><button id="newsClear" type="button" class="small btn btn-ghost" aria-label="Clear news">Clear</button></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" role="region" aria-live="polite" aria-atomic="false">
+        <div id="newsSub" class="p-4 rounded-lg bg-white border min-h-[120px]">
+          <h3 class="text-sm font-semibold mb-2">News</h3>
+          <div id="newsList" class="text-sm space-y-2"></div>
+          <div class="mt-3"><button id="newsClear" class="text-sm px-3 py-1 rounded-md border hover:bg-gray-50">Clear</button></div>
         </div>
 
-        <div class="subscriber" id="priceSub" aria-label="Price subscriber">
-          <h3 style="margin:0">Prices</h3>
-          <div id="priceList" class="small" style="margin-top:8px"></div>
-          <div style="margin-top:10px"><button id="priceClear" type="button" class="small btn btn-ghost" aria-label="Clear prices">Clear</button></div>
+        <div id="priceSub" class="p-4 rounded-lg bg-white border min-h-[120px]">
+          <h3 class="text-sm font-semibold mb-2">Prices</h3>
+          <div id="priceList" class="text-sm space-y-2"></div>
+          <div class="mt-3"><button id="priceClear" class="text-sm px-3 py-1 rounded-md border hover:bg-gray-50">Clear</button></div>
         </div>
 
-        <div class="subscriber" id="rawSub" aria-label="Raw events">
-          <h3 style="margin:0">All events (DOM)</h3>
-          <div id="rawList" class="small" style="margin-top:8px"></div>
-          <div style="margin-top:10px"><button id="rawClear" type="button" class="small btn btn-ghost" aria-label="Clear raw events">Clear</button></div>
+        <div id="rawSub" class="p-4 rounded-lg bg-white border min-h-[120px]">
+          <h3 class="text-sm font-semibold mb-2">All events (DOM)</h3>
+          <div id="rawList" class="text-sm space-y-2"></div>
+          <div class="mt-3"><button id="rawClear" class="text-sm px-3 py-1 rounded-md border hover:bg-gray-50">Clear</button></div>
         </div>
       </div>
 
-      <p class="muted small" style="margin-top:10px">This area shows updates from both Hype's pub/sub (if loaded) and DOM-dispatched events. The recommended event shape is <code class="mono">new CustomEvent('hype:pub', { detail: { topic, payload } })</code>.</p>
+      <p class="mt-3 text-xs text-gray-500">This area shows updates from both Hype's pub/sub (if loaded) and DOM-dispatched events.</p>
     </section>
 
-    <footer class="card muted small" style="display:block">
-      <strong>Developer:</strong> this demo will optionally import a runtime from <code class="mono">/static/js/hype</strong>.js</code> (non-blocking) and attempt to subscribe if the runtime exposes a pub/sub API.
+    <footer class="bg-white rounded-lg shadow p-4 text-sm text-gray-700">
+      <strong class="block">Developer:</strong>
+      <div class="mt-1">
+        This demo will auto-import <code class="font-mono text-xs">/static/js/hype.js</code> so markup-driven pub/sub examples work..
+      </div>
     </footer>
-  </main>
+  </div>
 
-  <script type="module">
-    // Non-blocking dynamic import helper for optional Hype runtime
-    async function tryAttachHype() {
-      try {
-        const mod = await import('/static/js/hype.js').catch(() => null);
-        const hype = mod && (mod.hype || mod.default || mod) || null;
-        if (hype && typeof hype.init === 'function') {
-          try { hype.init(); } catch (e) { console.warn('hype.init() error', e); }
-        }
-        return hype;
-      } catch (err) {
-        console.debug('Hype import failed (dev):', err);
-        return null;
-      }
-    }
 
-    (function () {
-      const newsList = document.getElementById('newsList');
-      const priceList = document.getElementById('priceList');
-      const rawList = document.getElementById('rawList');
-
-      const domNews = document.getElementById('domNews');
-      const domPrice = document.getElementById('domPrice');
-      const customTopic = document.getElementById('customTopic');
-      const customPayload = document.getElementById('customPayload');
-      const customPublish = document.getElementById('customPublish');
-
-      const newsClear = document.getElementById('newsClear');
-      const priceClear = document.getElementById('priceClear');
-      const rawClear = document.getElementById('rawClear');
-
-      function addEntry(container, text) {
-        if (!container) return;
-        const div = document.createElement('div');
-        div.className = 'entry';
-        div.textContent = `${new Date().toLocaleTimeString()} — ${text}`;
-        container.insertBefore(div, container.firstChild);
-      }
-
-      // Handler for CustomEvent produced by Hype pubsub plugin:
-      // new CustomEvent("hype:pub", { detail: { topic, payload } })
-      function handleHypePubEvent(ev) {
-        try {
-          const d = ev && ev.detail;
-          if (!d || !d.topic) return;
-          const topic = String(d.topic);
-          const payload = d.payload;
-          addEntry(rawList, `${topic} — ${JSON.stringify(payload)}`);
-
-          if (topic === 'news') {
-            const text = (payload && payload.text) ? payload.text : JSON.stringify(payload);
-            addEntry(newsList, text);
-          } else if (topic === 'price') {
-            const sym = (payload && payload.symbol) ? payload.symbol : 'UNKNOWN';
-            const price = (payload && (payload.price != null)) ? payload.price : JSON.stringify(payload);
-            addEntry(priceList, `${sym}: ${price}`);
-          }
-        } catch (e) {
-          console.warn('handleHypePubEvent error', e);
-        }
-      }
-
-      // Listen for DOM bridge events (works without Hype)
-      document.addEventListener('hype:pub', handleHypePubEvent);
-
-      // DOM publish buttons - dispatch the same shape Hype uses
-      if (domNews) {
-        domNews.addEventListener('click', () => {
-          const payload = { text: 'DOM: Breaking update at ' + new Date().toLocaleTimeString() };
-          const ev = new CustomEvent('hype:pub', { detail: { topic: 'news', payload }, bubbles: true, composed: true });
-          document.dispatchEvent(ev);
-        });
-      }
-
-      if (domPrice) {
-        domPrice.addEventListener('click', () => {
-          const price = Math.round((100 + Math.random() * 30) * 100) / 100;
-          const payload = { symbol: 'AAPL', price };
-          const ev = new CustomEvent('hype:pub', { detail: { topic: 'price', payload }, bubbles: true, composed: true });
-          document.dispatchEvent(ev);
-        });
-      }
-
-      if (customPublish) {
-        customPublish.addEventListener('click', () => {
-          const topic = (customTopic.value || '').trim();
-          if (!topic) return alert('Please enter a topic');
-          let payload = customPayload.value || '';
-          try {
-            payload = payload ? JSON.parse(payload) : null;
-          } catch (e) {
-            payload = customPayload.value;
-          }
-          const ev = new CustomEvent('hype:pub', { detail: { topic, payload }, bubbles: true, composed: true });
-          document.dispatchEvent(ev);
-          customTopic.value = '';
-          customPayload.value = '';
-        });
-      }
-
-      // Clear buttons
-      if (newsClear) newsClear.addEventListener('click', () => { if (newsList) newsList.innerHTML = ''; });
-      if (priceClear) priceClear.addEventListener('click', () => { if (priceList) priceList.innerHTML = ''; });
-      if (rawClear) rawClear.addEventListener('click', () => { if (rawList) rawList.innerHTML = ''; });
-
-      // If a Hype runtime exists, attempt to attach using its pub/sub API
-      (async function attachHypeIfPresent() {
-        const hypeInstance = await tryAttachHype();
-        if (!hypeInstance) {
-          addEntry(rawList, 'No Hype runtime detected — using DOM bridge.');
-          return;
-        }
-
-        try {
-          // If runtime exposes both sub and pub, wire them so markup-driven pub works.
-          if (typeof hypeInstance.sub === 'function' && typeof hypeInstance.pub === 'function') {
-            hypeInstance.sub('news', (payload) => {
-              const text = (payload && payload.text) ? payload.text : JSON.stringify(payload);
-              addEntry(newsList, `(hype.sub) ${text}`);
-            });
-            hypeInstance.sub('price', (payload) => {
-              const sym = (payload && payload.symbol) ? payload.symbol : 'UNKNOWN';
-              const price = (payload && (payload.price != null)) ? payload.price : JSON.stringify(payload);
-              addEntry(priceList, `(hype.sub) ${sym}: ${price}`);
-            });
-
-            addEntry(rawList, 'Hype runtime detected — subscribed via hype.sub()');
-
-            // Expose pub for debugging in dev if available
-            if (typeof hypeInstance.pub === 'function') {
-              try { window.__hypePub = hypeInstance.pub; } catch (_) {}
-            }
-          } else {
-            // Otherwise rely on DOM events (we already listen to those).
-            addEntry(rawList, 'Hype runtime loaded but pub/sub API not detected — using DOM bridge.');
-          }
-        } catch (err) {
-          console.warn('Failed to attach to hype pubsub API', err);
-          addEntry(rawList, 'Failed to attach Hype pub/sub: ' + String(err));
-        }
-      })();
-
-      // Dev helpers
-      try {
-        window.__hypePubsubDemo = {
-          publish: (topic, payload) => document.dispatchEvent(new CustomEvent('hype:pub', { detail: { topic, payload } })),
-          subscribeDom: () => document.addEventListener('hype:pub', handleHypePubEvent)
-        };
-      } catch (_) {}
-
-    })();
+  <script nonce="%CSP_NONCE%" type="module" async>
+    const m = await import('/static/js/hype.js');
+    (typeof m.createHype === 'function' ? m.createHype() : (m.default ?? m)).init?.();
   </script>
+
+
 </body>
 </html>

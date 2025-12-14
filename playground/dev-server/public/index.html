@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="min-h-screen">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -22,7 +22,7 @@
   - `data-hype-class-...` applies classes on the body reactively
 -->
 <body
-  class="bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400"
+  class="  bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400"
   data-hype-state='{"dark":false}'
   data-hype-class-earthone-dark='["get","dark"]'
   data-hype-class-earthone-light='["!","get","dark"]'
@@ -40,44 +40,27 @@
           </div>
         </div>-->
 
-            <div class="controls" aria-hidden="true">
-              <a class="btn" href="/">Back</a>
+            <!--<div class="controls" aria-hidden="true">
+              <a class="btn btn" href="/">Back</a>
               <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
-            </div>
+            </div>-->
 
           <div class="max-w-4xl mx-auto">
             <header class="mb-8">
                 <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
                     Hype
-                <span class="ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
+                <span class="text-7xl ml-auto block mt-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
                     data-hype-
                 </span>
                 </h1>
                 <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
               <!--<p class="">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
-              <p class="text-gray-600 text-thin" style="margin:6px 0 0">Progressive, CSP-friendly examples using declarative templates.</p>
+              <p class="text-gray-600 text-thin ml" >Progressive, CSP-friendly examples using declarative templates.</p>
             </header>
 
-
-
-        <div class="flex items-center gap-3">
-          <nav aria-label="Quick examples" class="flex gap-3">
-            <a class="link-card px-3 py-2 rounded text-sm" href="/reactive_counter.html">Reactive counter</a>
-            <a class="link-card px-3 py-2 rounded text-sm" href="/login.html">Login</a>
-          </nav>
-
-          <!-- Minimal declarative theme toggle (Hype will bind on runtime init) -->
-          <button
-            class="theme-button inline-grid place-items-center w-9 h-9 rounded"
-            aria-label="Toggle theme"
-            data-hype-on-click='["toggle","dark"]'
-            title="Toggle theme"
-          >🌗</button>
-        </div>
       </div>
-    </header>
 
-    <main></main>
+    <main>
       <section class="card mb-6" aria-labelledby="examples">
         <h2 id="examples" class="text-xl font-semibold mb-2">Examples</h2>
         <p class="text-sm text-muted mb-4">Open any example — pages progressively enhance when the Hype runtime is available at <code class="inline">/static/js/hype.js</code>.</p>
@@ -128,7 +111,7 @@
         </ul>
 
         <div class="mt-4">
-          <strong>Run dev server</strong</strong>>
+          <strong>Run dev server</strong>
           <pre class="cmd mt-2">cd hype/playground/dev-server
 pnpm install
 pnpm run dev</pre>

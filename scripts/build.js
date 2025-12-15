@@ -20,16 +20,27 @@ const sharedConfig = {
   target: ["es2020"],
 };
 
+// For core (non-rx) builds we intentionally mark rxjs as external so the core
+// artifacts do not accidentally include rxjs in their bundles. Rx-bundled
+// builds use a dedicated entry that imports the rx-specific adapter directly.
+const coreBuildOverrides = {
+  // Exclude rxjs from core bundles
+  external: ["rxjs"],
+};
+
 const builds = [
+  // Core builds (no rx)
   // ESM
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "esm",
     outfile: path.resolve(distDir, "hype.js"),
   },
   // ESM minified
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "esm",
     outfile: path.resolve(distDir, "hype.min.js"),
     minify: true,
@@ -37,12 +48,14 @@ const builds = [
   // CommonJS
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "cjs",
     outfile: path.resolve(distDir, "hype.cjs"),
   },
   // CommonJS minified
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "cjs",
     outfile: path.resolve(distDir, "hype.min.cjs"),
     minify: true,
@@ -50,6 +63,7 @@ const builds = [
   // IIFE for browsers
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "iife",
     globalName: "Hype",
     outfile: path.resolve(distDir, "hype.iife.js"),
@@ -57,9 +71,63 @@ const builds = [
   // IIFE minified
   {
     ...sharedConfig,
+    ...coreBuildOverrides,
     format: "iife",
     globalName: "Hype",
     outfile: path.resolve(distDir, "hype.iife.min.js"),
+    minify: true,
+  },
+
+  // Rx-bundled builds
+  // NOTE: these entries use a dedicated entry that should import the Rx adapter/wrapper
+  // (e.g. src/services/rx-event-system.bundle.ts). That file is intentionally separate so the
+  // core runtime remains free of an rxjs dependency unless you choose the rx bundle.
+  //
+  // ESM (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "esm",
+    outfile: path.resolve(distDir, "hype-rx.js"),
+  },
+  // ESM minified (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "esm",
+    outfile: path.resolve(distDir, "hype-rx.min.js"),
+    minify: true,
+  },
+  // CommonJS (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "cjs",
+    outfile: path.resolve(distDir, "hype-rx.cjs"),
+  },
+  // CommonJS minified (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "cjs",
+    outfile: path.resolve(distDir, "hype-rx.min.cjs"),
+    minify: true,
+  },
+  // IIFE for browsers (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "iife",
+    globalName: "HypeRx",
+    outfile: path.resolve(distDir, "hype-rx.iife.js"),
+  },
+  // IIFE minified (rx)
+  {
+    ...sharedConfig,
+    entryPoints: [path.resolve(srcDir, "hype-rx.ts")],
+    format: "iife",
+    globalName: "HypeRx",
+    outfile: path.resolve(distDir, "hype-rx.iife.min.js"),
     minify: true,
   },
 
@@ -83,7 +151,34 @@ async function build() {
     await Promise.all(contexts.map((ctx) => ctx.watch()));
   } else {
     console.log("Building hype...");
-    await Promise.all(builds.map((config) => esbuild.build(config)));
+
+    // Allow selective builds:
+    // - `--core` builds core artifacts (excludes `hype-rx.*`) and still emits the loader
+    // - `--rx` builds rx-bundled artifacts (includes `hype-rx.*`) and still emits the loader
+    // - no flag builds everything (default)
+    const onlyCore = process.argv.includes("--core");
+    const onlyRx = process.argv.includes("--rx");
+
+    const selectedBuilds = builds.filter((cfg) => {
+      const out = String(cfg.outfile || "");
+      const isRx = out.includes("hype-rx");
+      const isLoader = out.endsWith("loader.js") || out.includes(path.join("public", "static", "js", "loader.js"));
+      if (onlyCore) {
+        // include loader by allowing non-rx builds and the loader
+        return !isRx || isLoader;
+      }
+      if (onlyRx) {
+        // include rx builds and the loader
+        return isRx || isLoader;
+      }
+      return true;
+    });
+
+    if (selectedBuilds.length === 0) {
+      console.log("No builds selected (check --core / --rx flags).");
+    } else {
+      await Promise.all(selectedBuilds.map((config) => esbuild.build(config)));
+    }
 
     // Generate TypeScript declarations
     const { execSync } = await import("child_process");

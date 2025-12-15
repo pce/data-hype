@@ -86,6 +86,12 @@
             <p class="text-sm text-muted m-0 mt-2">Hype pubsub and DOM CustomEvent bridge.</p>
           </a>
 
+
+            <a class="link-card p-4 rounded" href="/infinite-images.html" role="listitem">
+                <h3 class="font-bold text-base m-0">intersections demo</h3>
+                <p class="text-sm text-muted m-0 mt-2">intersections.</p>
+            </a>
+
           <a class="link-card p-4 rounded" href="/django.html" role="listitem">
             <h3 class="font-bold text-base m-0">Django integration</h3>
             <p class="text-sm text-muted m-0 mt-2">Server templates & optimistic UI examples.</p>
@@ -94,6 +100,17 @@
           <a class="link-card p-4 rounded" href="/reactive_counter.html" role="listitem">
             <h3 class="font-bold text-base m-0">Reactive Counter</h3>
             <p class="text-sm text-muted m-0 mt-2">Minimal starter showing DSL handlers & binds.</p>
+          </a>
+
+          <!-- Production-friendly examples (drop-in server templates) -->
+          <a class="link-card p-4 rounded" href="/min_hypejs.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Prod — Minimal (drop-in)</h3>
+            <p class="text-sm text-muted m-0 mt-2">IIFE min bundle + one-liner init for server-rendered pages.</p>
+          </a>
+
+          <a class="link-card p-4 rounded" href="/hype-rxjs_static.html" role="listitem">
+            <h3 class="font-bold text-base m-0">Prod — Hype Rx (static)</h3>
+            <p class="text-sm text-muted m-0 mt-2">Rx-bundled artifact for advanced streaming pipelines (debounce/distinct examples).</p>
           </a>
         </div>
       </section>
@@ -153,7 +170,10 @@ pnpm run dev</pre>
     </footer>
   </div>
 
-  <!-- Non-inline module loader that binds auth and attempts to load the Hype runtime -->
-  <script type="module" src="/static/js/loader.js"></script>
+  <!-- Explicit markup-first initializer: authors must import and call hype.init() -->
+  <script type="module">
+    import { hype } from '/static/js/hype.js';
+    hype.init();
+  </script>
 </body>
 </html>

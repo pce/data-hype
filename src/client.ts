@@ -19,6 +19,8 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Fetcher } from "./interfaces/fetcher";
+import { defaultFetcher } from "./interfaces/fetcher";
 
 const DEFAULT_CSRF_ENDPOINT = "/csrf-token";
 const DEFAULT_LOGIN_ENDPOINT = "/login";
@@ -128,16 +130,20 @@ function buildConfig(cfg?: ClientConfig) {
    Factory: createClient
    --------------------------- */
 
-export function createClient(cfg?: ClientConfig) {
+export function createClient(cfg?: ClientConfig, fetcher?: Fetcher) {
   const config = buildConfig(cfg);
+  // Allow injection of a Fetcher for DI (auth wrappers, CSRF, testing). Fallback to global fetch.
+  const _fetch: Fetcher = fetcher ?? ((input: RequestInfo, init?: RequestInit) => fetch(input, init));
 
   /* ---------------------------
      Low-level network helpers
      --------------------------- */
 
-  async function fetchJson(url: string, init?: RequestInit): Promise<JsonResp> {
+  async function fetchJson(url: string, init?: RequestInit, fetcherOverride?: Fetcher): Promise<JsonResp> {
+    // allow per-call override of the fetcher; fall back to injected _fetch
+    const usedFetch = fetcherOverride ?? _fetch;
     try {
-      const resp = await fetch(url, init);
+      const resp = await usedFetch(url, init);
       const body = await resp.json().catch(() => {
         if (window.__hype_loader_debug) console.warn("[client] invalid json response from", url);
         return { ok: false, status: resp.status };
@@ -149,13 +155,13 @@ export function createClient(cfg?: ClientConfig) {
     }
   }
 
-  async function getCsrfToken(endpoint: string = config.endpoints.csrf): Promise<string | null> {
+  async function getCsrfToken(endpoint: string = config.endpoints.csrf, fetcherOverride?: Fetcher): Promise<string | null> {
     const result = await fetchJson(endpoint, {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
-    });
-
+    }, fetcherOverride);
+ 
     if (!result || result.ok === false) {
       if (window.__hype_loader_debug) console.warn("[client] CSRF endpoint returned", (result as any)?.status, endpoint);
       return null;
@@ -168,11 +174,11 @@ export function createClient(cfg?: ClientConfig) {
   /**
    * Convenience: classic username/password login
    */
-  async function login(username: string, password: string, endpoint: string = config.endpoints.login): Promise<LoginResult> {
+  async function login(username: string, password: string, endpoint: string = config.endpoints.login, fetcherOverride?: Fetcher): Promise<LoginResult> {
     if (!username || !password) return { ok: false, error: "username and password required" };
-    const token = await getCsrfToken();
+    const token = await getCsrfToken(config.endpoints.csrf, fetcherOverride);
     if (!token) return { ok: false, error: "unable to obtain CSRF token" };
-
+ 
     const body = await fetchJson(endpoint, {
       method: "POST",
       credentials: "same-origin",
@@ -182,8 +188,8 @@ export function createClient(cfg?: ClientConfig) {
         "X-CSRF-Token": token,
       },
       body: JSON.stringify({ username, password }),
-    });
-
+    }, fetcherOverride);
+ 
     if (!body || body.ok === false) {
       return { ok: false, ...(body as any) } as LoginResult;
     }
@@ -193,11 +199,11 @@ export function createClient(cfg?: ClientConfig) {
   /**
    * Generic login path for arbitrary payloads (passkeys, webauthn, custom shapes)
    */
-  async function loginWithPayload(payload: any, endpoint: string = config.endpoints.login): Promise<LoginResult> {
+  async function loginWithPayload(payload: any, endpoint: string = config.endpoints.login, fetcherOverride?: Fetcher): Promise<LoginResult> {
     if (!payload) return { ok: false, error: "credentials required" };
-    const token = await getCsrfToken();
+    const token = await getCsrfToken(config.endpoints.csrf, fetcherOverride);
     if (!token) return { ok: false, error: "unable to obtain CSRF token" };
-
+ 
     const body = await fetchJson(endpoint, {
       method: "POST",
       credentials: "same-origin",
@@ -207,31 +213,31 @@ export function createClient(cfg?: ClientConfig) {
         "X-CSRF-Token": token,
       },
       body: JSON.stringify(payload),
-    });
-
+    }, fetcherOverride);
+ 
     if (!body || body.ok === false) {
       return { ok: false, ...(body as any) } as LoginResult;
     }
     return { ok: true, ...(body || {}) } as LoginResult;
   }
 
-  async function logout(endpoint: string = config.endpoints.logout): Promise<JsonResp> {
-    const token = await getCsrfToken();
+  async function logout(endpoint: string = config.endpoints.logout, fetcherOverride?: Fetcher): Promise<JsonResp> {
+    const token = await getCsrfToken(config.endpoints.csrf, fetcherOverride);
     if (!token) return { ok: false, error: "unable to obtain CSRF token" };
     const body = await fetchJson(endpoint, {
       method: "POST",
       credentials: "same-origin",
       headers: { "X-CSRF-Token": token, Accept: "application/json" },
-    });
+    }, fetcherOverride);
     return body;
   }
 
-  async function me(endpoint: string = config.endpoints.me): Promise<JsonResp> {
+  async function me(endpoint: string = config.endpoints.me, fetcherOverride?: Fetcher): Promise<JsonResp> {
     const body = await fetchJson(endpoint, {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
-    });
+    }, fetcherOverride);
     return body;
   }
 
@@ -404,7 +410,7 @@ export function createClient(cfg?: ClientConfig) {
 /* Convenience: export a default client instance configured with defaults.
    Consumers who want immutability should prefer calling `createClient` with
    their own config. */
-export const defaultClient = createClient();
+export const defaultClient = createClient(undefined, defaultFetcher);
 export default createClient;
 
 /**

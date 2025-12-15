@@ -36,7 +36,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "node scripts/build.js",
+    "build": "pnpm -v >/dev/null 2>&1 && pnpm run build:core && pnpm run build:rx || npm run build:core && npm run build:rx",
+    "build:core": "node scripts/build.js --core",
+    "build:rx": "node scripts/build.js --rx",
     "dev": "node scripts/build.js --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -45,7 +47,7 @@
     "clean": "rm -rf dist coverage docs-output",
     "docs": "sh scripts/docs.sh || typedoc",
     "docs:serve": "typedoc && npx http-server docs-output -p 8080 -o",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm -v >/dev/null 2>&1 && pnpm run build || npm run build"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
@@ -54,7 +56,8 @@
     "happy-dom": "^12.10.3",
     "typedoc": "^0.25.0",
     "typescript": "^5.3.2",
-    "vitest": "^1.0.0"
+    "vitest": "^1.0.0",
+    "rxjs": "^7.8.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,12 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  createHypePubsub,
-  attachToHype,
-  createBehaviorRegistry,
-  parseTriggerSpec,
-  attachBehaviorsFromAttribute,
-  attachDebounce,
-} from "../src";
+import { createHypePubsub, attachToHype, createBehaviorRegistry, parseTriggerSpec, attachBehaviorsFromAttribute, attachDebounce } from "../src";
 
 describe("plugins: pubsub, behaviors, debounce", () => {
   beforeEach(() => {
@@ -202,6 +195,47 @@ describe("plugins: pubsub, behaviors, debounce", () => {
 
       // cleanup
       cleanup();
+      vi.useRealTimers();
+      document.body.removeChild(input);
+    });
+
+    it("attachDebounce wires each element only once when called multiple times", () => {
+      const hypeMock: any = {
+        trigger: vi.fn(() => Promise.resolve()),
+      };
+
+      // Call attachDebounce twice to simulate multiple wiring paths (e.g. multiple observers)
+      const cleanup1 = attachDebounce(document, hypeMock, "data-hype-debounce");
+      const cleanup2 = attachDebounce(document, hypeMock, "data-hype-debounce");
+
+      const input = document.createElement("input");
+      input.setAttribute("data-hype-debounce", "50");
+      document.body.appendChild(input);
+
+      const handler = vi.fn();
+      input.addEventListener("hype:debounced-input", (e: Event) => {
+        handler((e as CustomEvent).detail);
+      });
+
+      vi.useFakeTimers();
+
+      // simulate rapid typing
+      input.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(25);
+      input.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(25);
+
+      // advance past debounce window
+      vi.advanceTimersByTime(50);
+
+      // Despite calling attachDebounce twice, handler should only fire once
+      expect(handler).toHaveBeenCalledTimes(1);
+      // And hype.trigger should have been called only once
+      expect(hypeMock.trigger).toHaveBeenCalledTimes(1);
+
+      // cleanup both attachments
+      cleanup1();
+      cleanup2();
       vi.useRealTimers();
       document.body.removeChild(input);
     });

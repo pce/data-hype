@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hype — Minimal (production)</title>
+  <meta name="description" content="Minimal production example for Hype. Drop-in IIFE and one-liner init." />
+  <link rel="stylesheet" href="/tailwind.css" />
+</head>
+    <body
+      class="  bg-gray-100 p-8 bg-gradient-to-b from-teal-800 to-gray-400"
+      data-hype-state='{"dark":false}'
+      data-hype-class-earthone-dark='["get","dark"]'
+      data-hype-class-earthone-light='["!","get","dark"]'
+    >
+
+  <main class="wrap">
+    <div class="card">
+      <h1 class="text-2xl font-semibold mb-2">Hype — Minimal production example</h1>
+      <p class="muted">This page shows a minimal, markup-first integration suitable for server-rendered apps (Django, Express). Drop the minified IIFE bundle into your template and call the single-line initializer. No app-level JS bundling required.</p>
+      <noscript>
+        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded">
+          JavaScript is disabled — this demo will still work as server-rendered HTML. Hype's client-side enhancements require JS to be loaded for progressive features.
+        </div>
+      </noscript>
+
+      <section class="mt-4">
+        <h2 class="text-lg font-medium">Example: server-rendered toggle</h2>
+        <p class="text-sm text-gray-600">A form rendered by the server can use <code>data-hype-*</code> attributes to opt into progressive enhancement.</p>
+
+        <!-- Markup-first: the form will be enhanced by Hype when the runtime is loaded and init() is called -->
+        <form data-hype-state='{"submitting": false}' data-hype-post="/items/1/toggle" data-hype-target="#toggleResult" data-hype-swap="innerText" class="mt-3 flex items-center gap-3" aria-labelledby="toggleLabel">
+          <input type="hidden" name="id" value="1" />
+          <button
+            type="submit"
+            data-hype-on-click='["seq", ["set","submitting", true], ["post", "/items/1/toggle", { swap: "innerText" }], ["set","submitting", false]]'
+            data-hype-attr-aria-disabled='["get","submitting"]'
+            aria-controls="toggleResult"
+            class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring"
+          >Toggle Item</button>
+          <a href="/items/1/toggle" class="text-sm text-gray-500 underline sr-only" rel="nofollow">No-JS: Toggle</a>
+        </form>
+
+        <div id="toggleResult" class="mt-3 p-3 rounded bg-white border text-sm text-gray-700" aria-live="polite" aria-atomic="true">Server result will appear here</div>
+
+        <p class="mt-3 text-sm text-gray-500">
+          The server is expected to respond with a simple text payload for <code>innerText</code> swap or a JSON response that can include <code>html</code> to target a region. Hype's default swap is <code>innerText</code> for safety; opt into <code>innerHTML</code> only when the server is trusted to return safe HTML.
+        </p>
+      </section>
+
+      <section class="mt-6">
+        <h2 class="text-lg font-medium">Example: optimistic UI (markup-first)</h2>
+        <p class="text-sm text-gray-600">Use Hype's reactive attributes to update UI state immediately and then sync with the server.</p>
+
+        <div data-hype-state='{"favorited": false, "syncing": false}' class="mt-3 flex items-center gap-3" aria-live="polite">
+          <button
+            data-hype-on-click='["seq", ["toggle","favorited"], ["set","syncing", true], ["post", "/items/1/favorite", { swap: "none" }], ["set","syncing", false]]'
+            data-hype-attr-aria-pressed='["get","favorited"]'
+            class="inline-flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
+          >
+            <span aria-hidden="true">❤</span>
+            <span class="font-medium" data-hype-bind="favorited">Not favorited</span>
+          </button>
+
+          <span class="sr-only" data-hype-bind="favorited">favorite state</span>
+
+          <span class="text-sm text-gray-500" data-hype-show="syncing" aria-live="polite">Syncing…</span>
+
+          <noscript>
+            <form action="/items/1/favorite" method="post" class="inline">
+              <button type="submit" class="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">No-JS Favorite</button>
+            </form>
+          </noscript>
+        </div>
+      </section>
+
+      <section class="mt-6">
+        <h3 class="small">How to include Hype in production</h3>
+
+        <p class="small muted mt-2">
+          Two common patterns are supported; choose the one that matches your deployment:
+        </p>
+        <ol class="mt-2 pl-5 list-decimal space-y-1">
+          <li class="small"><strong>Legacy / drop-in (IIFE)</strong> — use when you only can add a single script tag to server-rendered templates and don't run an app bundler. Include the minified IIFE build (<code>hype.iife.min.js</code>) and call the global initializer. This is the smallest operational surface for progressive enhancement.</li>
+          <li class="small mt-1"><strong>Recommended (ESM / module)</strong> — use when your server or build supports ES modules. Import the module and call <code>createHype()</code>. The factory gives you programmatic control (mount, init, unmount) and is the recommended approach for modern apps.</li>
+        </ol>
+
+        <div class="small muted mt-2">
+          Example — IIFE (drop-in):
+        </div>
+        <pre class="cmd mt-2">&lt;script src="/static/js/hype.iife.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+// Defensive: call the global init only when the IIFE runtime is present.
+// This pattern is intended for templates that can't import modules.
+if (window.hype && typeof window.hype.init === 'function') {
+  window.hype.init();
+}
+&lt;/script&gt;</pre>
+
+        <div class="small muted mt-2">
+          Example — ESM / module (recommended for apps that use bundlers or module-aware servers):
+        </div>
+        <pre class="cmd mt-2">&lt;script type="module"&gt;
+import { createHype } from '/static/js/hype.js';
+// createHype returns a runtime you control. By default it mounts to the provided root
+// and will auto-init, but you can also call .mount(), .init(), .unmount() explicitly.
+const hype = createHype({ root: document.body });
+&lt;/script&gt;</pre>
+
+        <div class="small muted mt-2">
+          Notes on choosing a build:
+          <ul class="mt-2 pl-5 list-disc space-y-1">
+            <li class="small">If you rely on RxJS operator pipelines and want a simpler developer experience, use the rx-bundled build (e.g. <code>hype-rx.js</code>) so rxjs is included at build time.</li>
+            <li class="small">If you prefer to keep Hype small and provide your own rx adapter at app-level, use the core build (<code>hype.js</code>) and inject an Rx adapter in your app.</li>
+          </ul>
+        </div>
+
+      </section>
+
+      <section class="mt-6">
+        <h3 class="small">Notes</h3>
+        <ul class="small muted mt-2 pl-5 list-disc space-y-1">
+          <li><strong>Markup-first:</strong> the server renders HTML and Hype progressively enhances it via data attributes.</li>
+          <li><strong>Keep markup simple:</strong> prefer data attributes and let Hype manage events, swaps and reactive updates.</li>
+          <li><strong>Runtime variance:</strong> different deployments may provide different runtimes (IIFE global vs ES module). The examples above show both patterns — prefer the module/factory approach when possible (it gives clearer control and stronger typing for adapters).</li>
+          <li><strong>Rx integration:</strong> for advanced pipelines and Rx operators use the rx-bundled artifact (<code>hype-rx.*</code>) or import rxjs and inject it into the adapter. Module builds make the runtime explicit and avoid guessing which runtime is present.</li>
+          <li><strong>Docs / examples:</strong> this minimal page demonstrates the IIFE drop-in. For a module-only minimal example see the companion <code>min_hypejs_mod.html</code> (recommended for new projects).</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <script nonce="%CSP_NONCE%" type="module" async>
+    const m = await import('/static/js/hype.min.js');
+    m.createHype()
+  </script>
+
+
+  <!-- Production-friendly initializer: for the IIFE drop-in call the global helper.
+       If you are using modules prefer importing the factory and calling createHype()
+       from a module-aware entry point. The snippet below is intentionally defensive:
+       it will call the global initializer if the IIFE runtime is present, otherwise
+       it leaves module-based initialization to explicit module code. -->
+  <script>
+    // Defensive initializer for environments that include the IIFE bundle.
+    try {
+      if (typeof window !== 'undefined') {
+        // If using the IIFE build: window.hype is available and exposes .init()
+        if (window.hype && typeof window.hype.init === 'function') {
+          // Legacy/drop-in pattern: call the global init.
+          // window.hype.init();
+        }
+        // Note: do NOT auto-load a module here. Module consumers should import the
+        // ESM factory (createHype) explicitly from a <script type="module"> so the
+        // runtime and its dependencies (for example rxjs) are deterministic.
+      }
+    } catch {
+      // ignore errors in constrained hosts
+    }
+  </script>
+</body>
+</html>

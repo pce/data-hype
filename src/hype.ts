@@ -12,7 +12,9 @@ import type {
   HypeElement,
   HypeAttributes,
 } from "./types";
-import { EventSystem } from "./events";
+import type { IEventSystem } from "./interfaces/event-system.interface";
+import type { IRendererHost } from "./interfaces/renderer-host.interface";
+import { createEventSystem } from "./events";
 import { InterceptorRegistry, defaultSwap } from "./interceptors";
 import { ReactiveSystem } from "./reactive";
 import {
@@ -27,6 +29,11 @@ import {
   getFormAction,
   prepareRequestBody,
 } from "./form";
+// Small DI-friendly interfaces for network and transport
+import type { Fetcher } from "./interfaces/fetcher";
+import { defaultFetcher } from "./interfaces/fetcher";
+import type { PubSubTransport } from "./interfaces/transport";
+import { NoopTransport, createWebSocketTransport } from "./interfaces/transport";
 // Plugins (optional): pubsub & behavior registry (exposed as plugins)
 import { pubsubPlugin } from "./plugins/pubsub";
 import { behaviorPlugin } from "./plugins/behavior";
@@ -79,13 +86,26 @@ const DEFAULT_CONFIG: HypeConfig = {
  * <div id="result"></div>
  * ```
  */
+
+/*
+ *
+ * Hype accepts atm a single optional IEventSystem
+ * instance via the constructor. subsystems (interceptors, reactive)
+ * are created internally by Hype.
+ */
+
 export class Hype {
   private config: HypeConfig;
-  private events: EventSystem;
+  private events: IEventSystem;
   private interceptors: InterceptorRegistry;
   private reactive: ReactiveSystem;
   private attrs: HypeAttributes;
   private observer: MutationObserver | null = null;
+  // Bound event handler references so we can remove listeners reliably on destroy/unmount.
+  // Using stored bound references avoids the common bug of passing .bind(this) twice
+  // which creates distinct functions and prevents removal.
+  private _boundHandleSubmit?: EventListenerOrEventListenerObject;
+  private _boundHandleClick?: EventListenerOrEventListenerObject;
 
   // cleanup functions returned by attached plugins (if plugin returns a teardown)
   private _attachedPluginCleanups: Array<() => void> = [];
@@ -94,14 +114,130 @@ export class Hype {
   // Hype will update optional UI targets when behaviors set this attribute.
   private _activeIndexObserver: MutationObserver | null = null;
 
+  // Root element that Hype is mounted to. Mounting a root is required and immutable:
+  // - The runtime must be mounted to a single element which becomes the Hype sandbox.
+  // - Once mounted, the root cannot be changed for security and determinism.
+  private rootElement: Element | null = null;
+  private mounted: boolean = false;
   private initialized = false;
+  // Preferred public start entrypoint.
+  // Implemented to delegate to the legacy `init()` implementation while
+  // suppressing the deprecation warning (run() is the recommended API).
+  private _suppressInitWarning: boolean = false;
+  public run(plugins?: unknown | unknown[], opts: { scan?: boolean | "idle" } = { scan: "idle" }): void {
+    // Canonical start entrypoint. Call the concrete init implementation directly
+    // (avoid 'any' casts). We keep the one-time suppressed warning behavior.
+    this._suppressInitWarning = true;
+    try {
+      this.init(plugins, opts);
+    } finally {
+      this._suppressInitWarning = false;
+    }
+  }
 
-  constructor(config: Partial<HypeConfig> = {}) {
+  // Optional renderer/host adapter. This will be populated when a rendererHost is
+  // provided to the constructor or factory. Typed as `IRendererHost`.
+  private rendererHost?: IRendererHost;
+
+  // Networking & transport abstractions (injected via factory)
+  // - `fetch` is a Fetcher-compatible function used by runtime and plugins.
+  // - `transport` implements PubSubTransport for pub/sub semantics.
+  // - `pub` is a small facade for publishing to the transport.
+  // - `onRemote` is a convenience wrapper for subscribing to remote topics.
+  public fetch?: (input: RequestInfo, init?: RequestInit) => Promise<Response>;
+  public transport: PubSubTransport = NoopTransport;
+  public pub: (topic: string, payload?: any) => void = () => {};
+  public onRemote: (topic: string, handler: (payload: any) => void) => { unsubscribe(): void } = () => ({ unsubscribe() {} });
+
+  // remote schemas storage removed (unused)
+
+  /**
+   * Create a Hype instance.
+   *
+   * - `config` provides runtime configuration.
+   * - `events` optionally supplies an event system implementation (IoC).
+   * - `host` optionally supplies a renderer/host adapter (DOM by default).
+   *
+   * The constructor keeps the rest of the subsystems internal to keep the API
+   * small and opinionated. Consumers who need to swap more pieces can still
+   * replace them via dedicated factories in future refactors.
+   *
+   * Note: `host` is typed as `any` for now to avoid introducing a direct type
+   * import in this minimal change. Subsequent commits should replace `any` with
+   * the `IRendererHost` interface from the new interfaces file.
+   */
+  constructor(config: Partial<HypeConfig> = {}, events?: IEventSystem, rendererHost?: IRendererHost) {
+    // Merge defaults then validate attributePrefix
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.events = new EventSystem(this.config.debug);
+    // Normalize attributePrefix to a base (strip leading 'data-' if present) and ensure non-empty.
+    try {
+      let ap = (this.config as any).attributePrefix;
+      if (typeof ap !== 'string' || !ap || !ap.length) {
+        ap = DEFAULT_CONFIG.attributePrefix;
+      }
+      // If consumer passed a `data-` prefixed value, normalize to the base name.
+      if (ap.startsWith('data-')) {
+        ap = ap.slice(5);
+      }
+      (this.config as any).attributePrefix = ap;
+    } catch {
+      (this.config as any).attributePrefix = DEFAULT_CONFIG.attributePrefix;
+    }
+
+    // Use injected event system or default factory.
+    this.events = events ?? createEventSystem(this.config.debug);
+
+    // Store provided renderer host for later use by systems that need to access the host.
+    // If no rendererHost is provided here we'll let subsystems decide their fallback
+    // behavior for now; later refactors will provide a DefaultDomHost fallback.
+    this.rendererHost = rendererHost;
+
+    // Initialize network & transport defaults (DIP-friendly defaults). These
+    // are conservative defaults that can be overridden by the factory `createHype`
+    // via dependency injection.
+    // Prefer strongly-typed fields on the instance (no `any` casts).
+    try {
+      // defaultFetcher is the safe global fetch delegate; transports default to NoopTransport.
+      this.fetch = defaultFetcher;
+    } catch {
+      // defensive: environments without global fetch will fallback at call site
+      this.fetch = undefined;
+    }
+    try {
+      this.transport = NoopTransport;
+    } catch {
+      this.transport = NoopTransport;
+    }
+
+    // Provide small facades bound to this instance for convenience.
+    this.pub = (topic: string, payload?: any) => {
+      try {
+        this.transport?.publish(topic, payload);
+      } catch {
+        /* swallow publish errors */
+      }
+    };
+    this.onRemote = (topic: string, handler: (payload: any) => void) => {
+      try {
+        return this.transport?.subscribe(topic, handler) ?? { unsubscribe() {} };
+      } catch {
+        return { unsubscribe() {} };
+      }
+    };
+
+    // Create other subsystems internally for a simpler public API.
     this.interceptors = new InterceptorRegistry();
     this.reactive = new ReactiveSystem(this.config);
+
     this.attrs = this.createAttributes(this.config.attributePrefix);
+
+    // Apply debug setting to the event system; if setDebug exists it will be called.
+    try {
+      // IEventSystem implementations should expose setDebug.
+      this.events.setDebug?.(this.config.debug);
+    } catch {
+      /* ignore debug forwarding errors */
+    }
   }
 
   /**
@@ -117,6 +253,68 @@ export class Hype {
    *   hype.attach(pubsubPlugin);
    *   hype.attach(function (h) { h.sub(...); return () => { ... } });
    */
+  public applySocketMessage(msg: any): void {
+    // Conservative, typed implementation for handling simple server push shapes.
+    // Supports: { type: 'snapshot'|'patch'|'event', target, html, schema, topic, payload }
+    try {
+      if (!msg || typeof msg !== "object") return;
+      const type: string | undefined = msg.type;
+      const targetSel = msg.target;
+      const html: string | undefined = msg.html;
+      const payload = msg.payload;
+
+      const target =
+        typeof targetSel === "string"
+          ? document.querySelector(targetSel)
+          : targetSel instanceof Element
+          ? targetSel
+          : null;
+
+      switch (type) {
+        case "snapshot":
+          if (!target) return;
+          (target as HTMLElement).innerHTML = html ?? "";
+
+          // Re-scan bindings if runtime exposes scan()
+          try {
+            this.scan?.(target as Element);
+          } catch {}
+          return;
+
+        case "patch":
+          if (!target) return;
+          if (html != null) {
+            (target as HTMLElement).innerHTML = html;
+            try {
+              this.scan?.(target as Element);
+            } catch {}
+          } else if (payload) {
+            // schema-driven patches removed; fallback placeholder
+          }
+          return;
+
+        case "event":
+          if (typeof this.pub === "function" && typeof msg.topic === "string") {
+            try {
+              this.pub(msg.topic, payload);
+            } catch {}
+          }
+          return;
+
+        default:
+          // allow user override
+          if (typeof (this as any).onSocketMessage === "function") {
+            try {
+              (this as any).onSocketMessage(msg);
+            } catch {}
+          }
+          return;
+      }
+    } catch {
+      /* swallow apply errors */
+    }
+  }
+
   attach(plugin: unknown): void {
     if (!plugin) return;
     try {
@@ -221,6 +419,68 @@ export class Hype {
   }
 
   /**
+   * Compute a tagged fingerprint for a given string.
+   *
+   * Returns a string in the form "<ALG>:<hex>", where ALG indicates the
+   * algorithm used (for example "FNV1A64" or "FNV1A32"). The runtime attempts
+   * a 64-bit FNV-1a implementation using BigInt/TextEncoder when available,
+   * and falls back to a deterministic 32-bit FNV-1a otherwise. SHA-256 is
+   * cryptographically stronger; switch to it on both client and server if
+   * you need collision resistance or security guarantees.
+   */
+  private async computeFingerprint(input: string, opts?: { algorithm?: 'fnv1a64' | 'fnv1a32' }): Promise<string> {
+    const desired = (opts && opts.algorithm) || 'fnv1a64';
+    const s = typeof input === "string" ? input : String(input ?? "");
+
+    // Prefer BigInt/TextEncoder path for 64-bit FNV-1a when requested.
+    if (desired === 'fnv1a64') {
+      try {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(s);
+        const FNV_OFFSET_BASIS_64 = 0xcbf29ce484222325n;
+        const FNV_PRIME_64 = 0x100000001b3n;
+        let hash = FNV_OFFSET_BASIS_64;
+        for (const byte of bytes) {
+          hash ^= BigInt(byte);
+          hash = (hash * FNV_PRIME_64) & 0xffffffffffffffffn;
+        }
+        return "FNV1A64:" + hash.toString(16).padStart(16, "0");
+      } catch {
+        // If BigInt/TextEncoder isn't available, fall through to 32-bit fallback.
+      }
+    }
+
+    // 32-bit FNV-1a fallback (deterministic, widely available).
+    try {
+      let h = 2166136261 >>> 0;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return "FNV1A32:" + (h >>> 0).toString(16).padStart(8, "0");
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Parse a tagged fingerprint value into its algorithm and hex/value parts.
+   *
+   * Examples:
+   *   - "FNV1A64:00ab..." -> { alg: "FNV1A64", value: "00ab..." }
+   *   - "FNV1A32:abcd1234" -> { alg: "FNV1A32", value: "abcd1234" }
+   *   - "abcdef" -> { alg: undefined, value: "abcdef" }
+   */
+  private parseFingerprintTag(fp: string | null | undefined): { alg?: string; value?: string } {
+    if (!fp || typeof fp !== "string") return {};
+    const idx = fp.indexOf(":");
+    if (idx === -1) {
+      return { value: fp };
+    }
+    return { alg: fp.slice(0, idx), value: fp.slice(idx + 1) };
+  }
+
+  /**
    * Initialize Hype on the document and optionally attach plugins.
    *
    * You may pass a single plugin or an array of plugins. Each plugin will be
@@ -234,9 +494,19 @@ export class Hype {
    * Plugins may be functions or objects with an `install` method. If a plugin
    * returns a cleanup function, Hype will call it on `destroy()`.
    */
-  init(plugins?: unknown | unknown[]): void {
+  init(plugins?: unknown | unknown[], opts: { scan?: boolean | "idle" } = { scan: "idle" }): void {
+    // If already initialized, no-op.
     if (this.initialized) {
       return;
+    }
+
+    // Deprecation notice:
+    // `init()` is deprecated. Prefer `run()` as the canonical start method for
+    // Hype. During the deprecation period calling `init()` will emit a single
+    // console warning encouraging callers to switch to `run()`.
+    if (!this._suppressInitWarning) {
+      // eslint-disable-next-line no-console
+      console.warn("hype.init() is deprecated. Use hype.run() instead. `init()` will be removed in a future release.");
     }
 
     this.log("Initializing Hype");
@@ -249,12 +519,12 @@ export class Hype {
       }
     }
 
-    // Set up event delegation
-    document.addEventListener("submit", this.handleSubmit.bind(this), true);
-    document.addEventListener("click", this.handleClick.bind(this), true);
-
-    // Initialize reactive system on document body
-    this.reactive.init(document.body);
+    // Set up event delegation (synchronous, cheap)
+    // Store the bound handler references so they can be removed by destroy()/unmount().
+    this._boundHandleSubmit = this.handleSubmit.bind(this);
+    this._boundHandleClick = this.handleClick.bind(this);
+    document.addEventListener("submit", this._boundHandleSubmit, true);
+    document.addEventListener("click", this._boundHandleClick, true);
 
     // Attach default convenience plugins (still modular and optional).
     // These are installed via the plugin API so consumers can opt-out, replace,
@@ -290,62 +560,263 @@ export class Hype {
       }
     }
 
-    // Set up mutation observer for dynamically added elements
-    this.observer = new MutationObserver(this.handleMutations.bind(this));
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
     // Expose the instance on window for behavior implementations that rely on a global helper.
     // This keeps backward compatibility with examples that reference `window.hype.templateClone`.
     try {
       if (typeof window !== "undefined") {
-        (window as any).hype = this;
+        // Avoid `any` by using a narrow, local typing for the global helper.
+        (window as unknown as { hype?: Hype }).hype = this;
       }
     } catch {
       /* ignore non-browser environments */
     }
 
-    // Observe `data-hype-active-index` attribute changes so examples can reflect snap active index.
-    // Containers using the snap behavior may set `data-hype-active-index`; to display it,
-    // authors may include a child with `data-hype-active-display` on the container pointing
-    // to a selector (or include an element with id="activeIdx" inside the container for simple demos).
-    try {
-      this._activeIndexObserver = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-          if (m.type !== "attributes") continue;
-          const target = m.target as HTMLElement;
-          if (!target) continue;
-          const newVal = target.getAttribute("data-hype-active-index");
-          // prefer explicit selector on container
-          const displaySelector = target.getAttribute("data-hype-active-display");
-          if (displaySelector) {
+    // Prepare a deferred scan that performs heavier DOM wiring. The scan can be
+    // executed immediately, scheduled on requestIdleCallback, or skipped.
+    const doScan = () => {
+      try {
+        // Initialize reactive system on document body
+        this.reactive.init(document.body);
+      } catch {
+        /* ignore reactive init errors */
+      }
+
+      // Set up mutation observer for dynamically added elements
+      try {
+        this.observer = new MutationObserver(this.handleMutations.bind(this));
+        this.observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+      } catch {
+        /* ignore */
+      }
+
+      // Observe `data-hype-active-index` attribute changes so examples can reflect snap active index.
+      // Containers using the snap behavior may set `data-hype-active-index`; to display it,
+      // authors may include a child with `data-hype-active-display` on the container pointing
+      // to a selector (or include an element with id="activeIdx" inside the container for simple demos).
+      try {
+        this._activeIndexObserver = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.type !== "attributes") continue;
+            const target = m.target as HTMLElement;
+            if (!target) continue;
+            const newVal = target.getAttribute("data-hype-active-index");
+            // prefer explicit selector on container
+            const displaySelector = target.getAttribute("data-hype-active-display");
+            if (displaySelector) {
+              try {
+                const disp = document.querySelector(displaySelector) as HTMLElement | null;
+                if (disp) disp.textContent = newVal ?? "";
+                continue;
+              } catch {
+                /* ignore */
+              }
+            }
+            // fallback: find an element inside the container with id 'activeIdx'
             try {
-              const disp = document.querySelector(displaySelector) as HTMLElement | null;
-              if (disp) disp.textContent = newVal ?? "";
-              continue;
+              const fallback = target.querySelector("#activeIdx") as HTMLElement | null;
+              if (fallback) fallback.textContent = newVal ?? "";
             } catch {
               /* ignore */
             }
           }
-          // fallback: find an element inside the container with id 'activeIdx'
-          try {
-            const fallback = target.querySelector("#activeIdx") as HTMLElement | null;
-            if (fallback) fallback.textContent = newVal ?? "";
-          } catch {
-            /* ignore */
-          }
-        }
-      });
-      this._activeIndexObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-hype-active-index"] });
+        });
+        this._activeIndexObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-hype-active-index"] });
+      } catch {
+        /* ignore observer errors */
+      }
+    };
+
+    // Mark as initialized immediately to avoid re-entrancy; the heavier DOM scan will
+    // occur asynchronously per opts (scan=true -> immediate, scan='idle' -> idle, false -> skip).
+    this.initialized = true;
+
+    // Provide a runtime alias `run` on the instance that callers can use as the
+    // canonical runtime start method. We bind to `init` for backward compatibility.
+    // Declared as a public property above so TypeScript consumers see it.
+    try {
+      // `run` is provided as a public method — no runtime rebinding required.
+      // We intentionally avoid creating dynamic aliases that rely on `any`.
     } catch {
-      /* ignore observer errors */
+      /* ignore binding errors in non-browser environments */
     }
 
-    this.initialized = true;
+    // Decide how to run the scan based on opts
+    const scanOpt = opts && typeof opts.scan !== "undefined" ? opts.scan : "idle";
+    if (scanOpt === "idle") {
+      // Schedule on requestIdleCallback when available with a short timeout, fallback to setTimeout.
+      try {
+        const ric = (window as any).requestIdleCallback;
+        if (typeof ric === "function") {
+          ric(() => {
+            try {
+              doScan();
+            } catch {
+              /* ignore scan errors */
+            }
+          }, { timeout: 200 });
+        } else {
+          // Fallback small delay
+          setTimeout(() => {
+            try {
+              doScan();
+            } catch {
+              /* ignore scan errors */
+            }
+          }, 50);
+        }
+      } catch {
+        // Unexpected environment, fallback to timeout
+        setTimeout(() => {
+          try {
+            doScan();
+          } catch {
+            /* ignore scan errors */
+          }
+        }, 50);
+      }
+    } else if (scanOpt === true) {
+      // Immediate (synchronous) scan — kept for backward-compatibility but not recommended for large pages.
+      try {
+        doScan();
+      } catch {
+        /* ignore scan errors */
+      }
+    } else {
+      // scanOpt === false -> skip the DOM scan and observer setup
+      // The instance is initialized but heavy DOM wiring is intentionally deferred/disabled.
+    }
+  }
+  
+  /**
+   * Public convenience: perform a reactive scan (bootstrap) on the mounted root or a provided element.
+   *
+   * - Mounting a root via `hype.mount(rootElement)` is mandatory before calling `init()` or `scan()`.
+   * - The mounted root is immutable once set. This enforces a sandboxed scope for Hype wiring.
+   *
+   * Usage:
+   *   // after mounting:
+   *   hype.mount(document.querySelector('#hype-root'));
+   *   hype.init(); // safe, non-blocking by default
+   *
+   *   // or scan a specific element within the mounted root (explicit)
+   *   hype.scan('#widget-1');
+   */
+  public scan(selectorOrEl?: string | Element): void {
+    if (!this.mounted || !this.rootElement) {
+      throw new Error("Hype.scan() requires a mounted root. Call hype.mount(rootElement) before scanning.");
+    }
+
+    let target: Element | null = null;
+    if (!selectorOrEl) {
+      target = this.rootElement;
+    } else if (typeof selectorOrEl === "string") {
+      try {
+        // Query relative to the mounted root for containment and security.
+        target = (this.rootElement as Element).querySelector(selectorOrEl);
+      } catch {
+        target = null;
+      }
+    } else if ((selectorOrEl as Element).nodeType) {
+      // Ensure the provided element is contained within the mounted root.
+      const el = selectorOrEl as Element;
+      if (this.rootElement.contains(el)) {
+        target = el;
+      } else {
+        if (this.config?.debug) {
+          // eslint-disable-next-line no-console
+          console.warn("[Hype.scan] provided element is not contained within the mounted root; skipping.");
+        }
+        target = null;
+      }
+    }
+
+    if (!target) {
+      if (this.config?.debug) {
+        // eslint-disable-next-line no-console
+        console.warn("[Hype.scan] No valid target found for scan within the mounted root; skipping.");
+      }
+      return;
+    }
+
+    // Delegate to reactive subsystem to perform attribute wiring for the subtree rooted at `target`.
+    try {
+      // Prefer a rendererHost-resolved root when a host adapter is present. This allows
+      // non-DOM hosts to determine the appropriate element/document mapping.
+      const initTarget = this.rendererHost && typeof this.rendererHost.resolveRoot === "function"
+        ? ((this.rendererHost.resolveRoot(target as any) as HTMLElement) ?? (target as HTMLElement))
+        : (target as HTMLElement);
+
+      (this.reactive as any).init(initTarget as HTMLElement);
+    } catch (err) {
+      if (this.config?.debug) {
+        // eslint-disable-next-line no-console
+        console.warn("[Hype.scan] reactive.init failed for target:", target, err);
+      }
+    }
   }
 
+  /**
+   * Mount the runtime to a single root element. Mounting is mandatory and immutable.
+   *
+   * - root may be an Element or a selector string (resolved against document).
+   * - Once mounted, subsequent mount() calls are ignored and an error is thrown in strict mode.
+   */
+  public mount(root: Element | string): void {
+    if (this.mounted) {
+      // Immutable: do not allow changing the root once set.
+      throw new Error("Hype.mount() has already been called. The mount root is immutable for security reasons.");
+    }
+    let resolved: Element | null = null;
+
+    // If a rendererHost adapter is present, prefer rendererHost.resolveRoot which can support
+    // non-DOM hosts or alternate resolution semantics.
+    if (this.rendererHost && typeof this.rendererHost.resolveRoot === "function") {
+      try {
+        const maybe = this.rendererHost.resolveRoot(root as any);
+        if (maybe) {
+          // If host returned a Document, normalize to its documentElement so mount
+          // remains an Element. Otherwise accept the Element as-is.
+          if ((maybe as Document).nodeType === 9) {
+            resolved = (maybe as Document).documentElement ?? null;
+          } else if ((maybe as Element).nodeType) {
+            resolved = maybe as Element;
+          } else {
+            resolved = null;
+          }
+        } else {
+          resolved = null;
+        }
+      } catch {
+        resolved = null;
+      }
+    } else {
+      // Fallback to DOM resolution when no host is injected.
+      if (typeof root === "string") {
+        try {
+          resolved = document.querySelector(root);
+        } catch {
+          resolved = null;
+        }
+      } else if ((root as Element).nodeType) {
+        resolved = root as Element;
+      }
+    }
+
+    if (!resolved) {
+      throw new Error("Hype.mount() could not resolve the provided root. Provide a valid Element or selector.");
+    }
+
+    this.rootElement = resolved;
+    this.mounted = true;
+    if (this.config?.debug) {
+      // eslint-disable-next-line no-console
+      console.info("[Hype.mount] mounted to root:", resolved);
+    }
+  }
+  
   /**
    * Deferred autowire helper.
    *
@@ -360,58 +831,85 @@ export class Hype {
    *   { crud: false }                   // disable autowire for crud
    *   { crud: { endpoint: '/api/items' } // pass config to crud factory
    */
-  public async autowirePlugins(opts?: { crud?: boolean | Record<string, any>; datatable?: boolean | Record<string, any> }): Promise<void> {
+  public async autowirePlugins(): Promise<void> {
+    // NOTE: As of the recent refactor the optional CRUD/UI plugins have been
+    // moved out of the main runtime surface into the repository's experimental
+    // area. This prevents the core runtime from implicitly importing
+    // application/demo-level code which may not be present in consumer builds.
+    //
+    // Location: experimental/plugins/crud and experimental/plugins/ui
+    //
+    // Autowire is therefore disabled for those optional plugins by default.
+    // Hosts that want to use the experimental plugins should explicitly attach
+    // them after creating a Hype instance, for example:
+    //
+    //   import createCrudPlugin from '/path/to/experimental/plugins/crud';
+    //   hype.attach(createCrudPlugin({ endpoint: '/api/items' }));
+    //
+    // Keep autowirePlugins available for future opt-in behavior, but do not
+    // attempt dynamic imports of experimental modules from core.
     if (typeof document === "undefined") return;
-    const cfg = opts || {};
-    try {
-      // If markup indicates a CRUD root and crud autowire is enabled, dynamically import & attach.
-      const shouldAutoCrud = cfg.crud !== false && !!document.querySelector("[data-hype-crud]");
-      if (shouldAutoCrud) {
-        try {
-          const mod = await import("./plugins/crud/index");
-          const factory = (mod && (mod.default || (mod as any).createCrudPlugin)) as any;
-          if (typeof factory === "function") {
-            const pluginCfg = typeof cfg.crud === "object" ? cfg.crud : {};
-            this.attach(factory(pluginCfg));
-          }
-        } catch (e) {
-          if (this.config.debug) console.warn("autowirePlugins: failed to load crud plugin", e);
-        }
-      }
 
-      // Datatable UI: use same DOM marker (data-hype-crud) for demo roots. Datatable autowire can be
-      // disabled independently via opts.datatable = false.
-      const shouldAutoDt = cfg.datatable !== false && !!document.querySelector("[data-hype-crud]");
-      if (shouldAutoDt) {
-        try {
-          const mod = await import("./plugins/ui/datatable");
-          const factory = (mod && (mod.default || (mod as any).createDataTablePlugin)) as any;
-          if (typeof factory === "function") {
-            const pluginCfg = typeof cfg.datatable === "object" ? cfg.datatable : {};
-            this.attach(factory(pluginCfg));
-          }
-        } catch (e) {
-          if (this.config.debug) console.warn("autowirePlugins: failed to load datatable plugin", e);
-        }
-      }
-    } catch (e) {
-      if (this.config.debug) console.warn("autowirePlugins failed", e);
+    if (this.config?.debug) {
+      // Informative hint for developers running in debug builds.
+      // No attempt is made to resolve or import experimental plugins here.
+      // See the repository's experimental/ directory for moved plugin sources.
+      // (Autowire disabled to avoid build/test resolution errors.)
+      // eslint-disable-next-line no-console
+      console.debug("autowirePlugins: optional CRUD/UI plugins are experimental and not auto-imported. See experimental/plugins.");
     }
+
+    // We intentionally do nothing further here. Consumers may opt into dynamic
+    // wiring by calling `hype.attach(...)` with plugin factories from the
+    // experimental location or from their own app-level modules.
+    return;
   }
 
   /**
-   * Destroy Hype instance, removing all listeners
+   * Unmount the runtime from its current root.
+   *
+   * This will stop mutation observers, remove delegated DOM listeners, and
+   * clear the mounted root, but will NOT run plugin cleanup or clear
+   * interceptors. Use `destroy()` for a full teardown.
    */
-  destroy(): void {
-    if (!this.initialized) {
+  public unmount(): void {
+    if (!this.mounted) {
       return;
     }
 
-    document.removeEventListener("submit", this.handleSubmit.bind(this), true);
-    document.removeEventListener("click", this.handleClick.bind(this), true);
+    // Remove delegated event listeners if we registered bound handlers
+    try {
+      if (this._boundHandleSubmit) {
+        try {
+          document.removeEventListener("submit", this._boundHandleSubmit, true);
+        } catch {
+          /* ignore */
+        }
+        this._boundHandleSubmit = undefined;
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (this._boundHandleClick) {
+        try {
+          document.removeEventListener("click", this._boundHandleClick, true);
+        } catch {
+          /* ignore */
+        }
+        this._boundHandleClick = undefined;
+      }
+    } catch {
+      /* ignore */
+    }
 
+    // Disconnect primary mutation observer (used for dynamic wiring)
     if (this.observer) {
-      this.observer.disconnect();
+      try {
+        this.observer.disconnect();
+      } catch {
+        /* ignore */
+      }
       this.observer = null;
     }
 
@@ -427,20 +925,60 @@ export class Hype {
 
     // Remove global reference if we published it
     try {
-      if (typeof window !== "undefined" && (window as any).hype === this) {
+      // Use a typed view of window to avoid `any`.
+      const win = (window as unknown as { hype?: Hype });
+      if (typeof window !== "undefined" && win.hype === this) {
         try {
-          delete (window as any).hype;
+          delete win.hype;
         } catch {
-          (window as any).hype = undefined;
+          win.hype = undefined;
         }
       }
     } catch {
       /* ignore non-browser errors */
     }
 
-    // plugin-specific cleanup is handled via `_attachedPluginCleanups` (invoked below).
-    // Individual `_behaviorCleanup` / `_debounceCleanup` fields were removed in favor of the
-    // unified plugin lifecycle management.
+    // Clear mounted root and allow a future mount() call
+    this.rootElement = null;
+    this.mounted = false;
+
+    this.log("Hype unmounted");
+  }
+
+  /**
+   * Destroy Hype instance, removing all listeners and running plugin cleanup.
+   *
+   * The method is idempotent: calling destroy() multiple times is safe.
+   */
+  destroy(): void {
+    // Always attempt to remove any global reference to this instance prior to other teardown.
+    // This ensures environments/tests that expect `window.hype` to be cleared won't see a stale reference.
+    try {
+      // Use a typed view of window to avoid `any`.
+      const win = (window as unknown as { hype?: Hype });
+      if (typeof window !== "undefined" && win.hype === this) {
+        try {
+          delete win.hype;
+        } catch {
+          // In some constrained hosts deletion may fail; unset as a fallback.
+          win.hype = undefined;
+        }
+      }
+    } catch {
+      /* ignore non-browser errors */
+    }
+
+    // If not initialized and not mounted, nothing else to do (idempotent)
+    if (!this.initialized && !this.mounted) {
+      return;
+    }
+
+    // Ensure DOM wiring and mutation observers are removed
+    try {
+      this.unmount();
+    } catch {
+      /* ignore unmount errors */
+    }
 
     // run any cleanup functions returned by attached plugins
     if (Array.isArray(this._attachedPluginCleanups) && this._attachedPluginCleanups.length) {
@@ -454,7 +992,13 @@ export class Hype {
       this._attachedPluginCleanups = [];
     }
 
-    this.interceptors.clear();
+    // Clear interceptors and mark uninitialized
+    try {
+      this.interceptors.clear();
+    } catch {
+      /* ignore */
+    }
+
     this.initialized = false;
 
     this.log("Hype destroyed");
@@ -633,8 +1177,10 @@ export class Hype {
         interceptedCtx.abortController.abort();
       }, this.config.timeout);
 
-      // Make the fetch request
-      const response = await fetch(interceptedCtx.url, interceptedCtx.init);
+      // Make the fetch request using the injected fetcher if present.
+      // Falls back to the global fetch when this.fetch isn't provided.
+      const usedFetch = (this.fetch ?? ((input: RequestInfo, init?: RequestInit) => fetch(input, init)));
+      const response = await usedFetch(interceptedCtx.url, interceptedCtx.init);
 
       clearTimeout(timeoutId);
 
@@ -706,21 +1252,74 @@ export class Hype {
         return;
       }
 
-      await this.performSwap(ctx, html, json.settle);
+      // Prefer an explicit server-provided fingerprint (common keys: fp, fingerprint, etag)
+      let incomingFingerprint: string | undefined = (json as any).fp ?? (json as any).fingerprint ?? (json as any).etag;
+
+      // If server didn't provide a fingerprint, compute a local tagged fingerprint of the HTML.
+      // Note: SHA-256 is stronger; FNV-1a is chosen here for speed and portability in the demo.
+      if (!incomingFingerprint) {
+        try {
+          incomingFingerprint = await this.computeFingerprint(String(html));
+        } catch {
+          incomingFingerprint = undefined;
+        }
+      }
+
+      await this.performSwap(ctx, html, json.settle, incomingFingerprint);
     } else if (typeof ctx.body === "string") {
       // Handle plain HTML response
-      await this.performSwap(ctx, ctx.body);
+      const html = ctx.body;
+      let incomingFingerprint: string | undefined;
+      try {
+        // Compute local tagged fingerprint for the HTML (attempts 64-bit FNV1A, falls back to 32-bit).
+        incomingFingerprint = await this.computeFingerprint(String(html));
+      } catch {
+        incomingFingerprint = undefined;
+      }
+      await this.performSwap(ctx, html, undefined, incomingFingerprint);
     }
   }
 
   /**
    * Perform the DOM swap
    */
-  private async performSwap(ctx: ResponseContext, html: string, settleOverride?: number): Promise<void> {
+  private async performSwap(ctx: ResponseContext, html: string, settleOverride?: number, incomingFingerprint?: string): Promise<void> {
     // Dispatch before-swap event
     const finalHtml = this.events.dispatchBeforeSwap(ctx, html);
     if (finalHtml === null) {
       this.log("Swap cancelled by event");
+      return;
+    }
+
+    // Fingerprint attribute name (data- prefixed) derived from configured prefix base
+    const base = typeof this.config.attributePrefix === 'string' ? (this.config.attributePrefix.startsWith('data-') ? this.config.attributePrefix.slice(5) : this.config.attributePrefix) : 'hype';
+    const dataFpAttr = `data-${base}-fp`;
+
+    // Read current fingerprint from the target (only data- variant)
+    let currentFp: string | null = null;
+    try {
+      currentFp = ctx.target.getAttribute(dataFpAttr) ?? null;
+    } catch {
+      currentFp = null;
+    }
+
+    // If the incoming fingerprint is present and matches the current stored fingerprint,
+    // skip the DOM swap entirely to avoid unnecessary reflows/updates.
+    if (incomingFingerprint && currentFp && incomingFingerprint === currentFp) {
+      // Parse the algorithm tag for logging/context if present
+      const parsed = this.parseFingerprintTag(incomingFingerprint);
+      const alg = parsed.alg ?? "unknown";
+      this.log("Skipping swap: fingerprint matched", incomingFingerprint, "alg:", alg);
+      // Respect settle delay semantics even when skipping
+      const settleDelay = settleOverride ?? this.config.settleDelay;
+      await new Promise((resolve) => setTimeout(resolve, settleDelay));
+      // Fire after-swap and after-settle hooks to mimic completed swap lifecycle
+      try {
+        this.events.dispatchAfterSwap(ctx, ctx.target);
+      } catch {}
+      try {
+        this.events.dispatchAfterSettle(ctx, ctx.target);
+      } catch {}
       return;
     }
 
@@ -731,6 +1330,19 @@ export class Hype {
     } else {
       // Always use the default swap implementation (delegates to innerHTML/outerHTML/insertAdjacentHTML/etc).
       defaultSwap(ctx.target, finalHtml, ctx.swap);
+    }
+
+    // After a successful swap, if we have an incoming fingerprint, persist it on the target (data- variant).
+    if (incomingFingerprint) {
+      try {
+        // Log algorithm tag when persisting so callers/diagnostics can see what was stored.
+        const parsedPersist = this.parseFingerprintTag(incomingFingerprint);
+        const persistAlg = parsedPersist.alg ?? "unknown";
+        this.log("Persisting fingerprint", incomingFingerprint, "alg:", persistAlg);
+        ctx.target.setAttribute(dataFpAttr, incomingFingerprint);
+      } catch {
+        /* ignore set failures */
+      }
     }
 
     // Dispatch after-swap event
@@ -1056,15 +1668,263 @@ export class Hype {
 
 /**
  * Create and return a new Hype instance
+ *
+ * Accepts an optional dependency bag so callers can inject implementations
+ * for testing, customization, or alternative subsystems (IoC).
+ *
+ * The factory is explicit and accepts a `deps` bag for injecting dependencies:
+ *   { events?: IEventSystem, host?: IRendererHost, fetch?: Fetcher, transport?: PubSubTransport }
+ *
+ * Behavior:
+ * - `autoInit` defaults to `true` (runtime will mount to document.body if no root is provided
+ *   and then start via `run()`).
+ * - The factory wires typed `fetch` and `transport` onto the Hype instance and exposes
+ *   `pub` and `onRemote` facades.
  */
-export function createHype(config?: Partial<HypeConfig>): Hype {
-  return new Hype(config);
+export function createHype(
+  config?: Partial<HypeConfig> & { root?: string | Element; host?: IRendererHost },
+  deps: { events?: IEventSystem; host?: IRendererHost; fetch?: Fetcher; transport?: PubSubTransport } | boolean = {},
+  autoInit: boolean = true
+): Hype {
+  // Backwards-compatibility: callers historically passed `false` as the second argument
+  // to indicate `autoInit = false`. Support that legacy call-site shape by normalizing
+  // a boolean `deps` into the `autoInit` flag and an empty deps object.
+  if (typeof deps === "boolean") {
+    autoInit = deps;
+    deps = {};
+  }
+
+  const events = (deps as any)?.events;
+  const resolvedRendererHost = (deps as any)?.host ?? (config as any)?.host;
+
+  // Construct instance with optional renderer-host injection
+  const instance = new Hype(config ?? {}, events, resolvedRendererHost);
+
+  // Wire injected fetcher and transport in a typed, non-destructive way
+  try {
+    // Attach fetcher: prefer provided fetch, otherwise defaultFetcher
+    instance.fetch = deps?.fetch ?? defaultFetcher;
+    // Attach transport: prefer provided transport, otherwise NoopTransport
+    instance.transport = deps?.transport ?? NoopTransport;
+
+    // Provide small facades
+    instance.pub = (topic: string, payload?: any) => {
+      try {
+        instance.transport?.publish(topic, payload);
+      } catch {
+        /* swallow publish errors */
+      }
+    };
+
+    instance.onRemote = (topic: string, handler: (payload: any) => void) => {
+      try {
+        return instance.transport?.subscribe(topic, handler) ?? { unsubscribe() {} };
+      } catch {
+        return { unsubscribe() {} };
+      }
+    };
+
+    // Forward raw transport messages into the instance's applySocketMessage if present
+    try {
+      if (typeof instance.transport?.onRawMessage === "function") {
+        instance.transport.onRawMessage((m: any) => {
+          try {
+            instance.applySocketMessage?.(m);
+          } catch {
+            /* swallow handler errors */
+          }
+        });
+      }
+    } catch {
+      /* ignore transport wiring errors */
+    }
+
+    // WS autowire deferred: autowire will be performed later, scoped to the mounted root (not the whole document).
+    // The previous implementation scanned `document` eagerly. To respect sandboxing and scoping,
+    // autowiring is now executed after mount (or against `document.body` only when autoInit is used).
+    // The actual autowire logic is inserted further below (near the auto-init flow).
+  } catch {
+    // fail quietly - wiring is optional
+  }
+
+  // If the config provides a root, attempt to mount before starting the runtime.
+  try {
+    const maybeRoot = (config as any)?.root;
+    if (maybeRoot) {
+      try {
+        instance.mount(maybeRoot as string | Element);
+      } catch (mountErr) {
+        if ((config as any)?.debug || (instance.getConfig && instance.getConfig().debug)) {
+          // eslint-disable-next-line no-console
+          console.warn("createHype: mount failed for provided config.root:", mountErr);
+        }
+        // Do not rethrow — mounting failure is non-fatal for creation.
+      }
+    }
+  } catch {
+    // Defensive no-op
+  }
+
+  // Auto-mount to document.body if requested and nothing is mounted yet.
+  //
+  // Deferred WebSocket autowire (scoped)
+  //
+  // We provide a small helper that discovers `-ws-url` attributes within a specific root
+  // (the mounted root element). This avoids scanning the whole document and respects
+  // `config.root` scoping. The helper accepts either an Element or Document as the scope.
+  function autowireWsOnRoot(scopeRoot?: Element | Document | null) {
+    try {
+      if (!scopeRoot) return;
+      // Prefer Element as container; if provided a Document, use its documentElement.
+      const container: Element | null = scopeRoot instanceof Element ? scopeRoot : (scopeRoot as Document).documentElement ?? null;
+      if (!container) return;
+
+      const prefix = instance.getConfig().attributePrefix || 'hype';
+      const base = prefix.startsWith('data-') ? prefix.slice(5) : prefix;
+      const attrName = `data-${base}-ws-url`;
+      // Only match the data- prefixed attribute for consistent markup-first usage
+      const selector = `[${attrName}]`;
+      const els = Array.from(container.querySelectorAll(selector));
+      if (!els.length) return;
+
+      const pool = new Map<string, PubSubTransport>();
+      let rawHandlers: Array<(m: any) => void> = [];
+
+      const getTransportFor = (url: string) => {
+        let t = pool.get(url);
+        if (t) return t;
+        try {
+          const created = createWebSocketTransport(url, { autoConnect: true });
+          // forward raw messages to hype.applySocketMessage
+          try {
+            created.onRawMessage?.((m: any) => {
+              try {
+                instance.applySocketMessage?.(m);
+              } catch {}
+            });
+          } catch {}
+          // attach any existing raw handlers
+          for (const h of rawHandlers) {
+            try {
+              created.onRawMessage?.(h);
+            } catch {}
+          }
+          pool.set(url, created);
+          return created;
+        } catch {
+          return NoopTransport;
+        }
+      };
+
+      // Use the first discovered ws-url under this scope as the delegating default for convenience.
+      const defaultAttr = els[0] && els[0].getAttribute(attrName);
+      const defaultUrl = defaultAttr ? String(defaultAttr) : "";
+
+      const delegating: PubSubTransport = {
+        connect() {
+          // no-op; pooled transports auto-connect
+        },
+        disconnect() {
+          for (const t of Array.from(pool.values())) {
+            try {
+              t.disconnect?.();
+            } catch {}
+          }
+          pool.clear();
+        },
+        publish(topic: string, payload?: any) {
+          try {
+            if (!defaultUrl) return;
+            const t = getTransportFor(defaultUrl);
+            if (t && typeof (t as any).publish === "function") {
+              try { (t as any).publish(topic, payload); } catch {}
+            }
+          } catch {}
+        },
+        subscribe(topic: string, handler: (payload: any, msg?: any) => void) {
+          try {
+            if (!defaultUrl) return { unsubscribe() {} };
+            const t = getTransportFor(defaultUrl);
+            if (t && typeof (t as any).subscribe === "function") {
+              try { return (t as any).subscribe(topic, handler); } catch { return { unsubscribe() {} }; }
+            }
+            return { unsubscribe() {} };
+          } catch { return { unsubscribe() {} }; }
+        },
+        onRawMessage(handler: (m: any) => void) {
+          rawHandlers.push(handler);
+          for (const t of Array.from(pool.values())) {
+            try { t.onRawMessage?.(handler); } catch {}
+          }
+        },
+      };
+
+      // If the instance currently uses NoopTransport (no explicit injection), install delegator.
+      if ((((deps as any)?.transport) ?? NoopTransport) === NoopTransport) {
+        try { instance.transport = delegating; } catch {}
+      }
+
+      // Expose pool for consumers/plugins to inspect if desired (non-typed)
+      try { (instance as any).transportPool = pool; } catch {}
+      // Rebind facades to ensure they use the (possibly) new transport
+      instance.pub = (topic: string, payload?: any) => {
+        try { instance.transport?.publish(topic, payload); } catch {}
+      };
+      instance.onRemote = (topic: string, handler: (payload: any) => void) => {
+        try { return instance.transport?.subscribe(topic, handler) ?? { unsubscribe() {} }; } catch { return { unsubscribe() {} }; }
+      };
+    } catch {
+      /* swallow autowire errors */
+    }
+  }
+
+  // Run autowire now if we already have a mounted root (config.root mount succeeded).
+  try {
+    autowireWsOnRoot(instance['rootElement'] ?? null);
+  } catch {}
+
+  // If autoInit is true and no explicit root was mounted, prefer to autowire the soon-to-be-mounted body.
+  // This keeps backwards-compatible behavior for the default autoInit flow while still scoping to body,
+  // not the entire document.
+  try {
+    if (!instance['rootElement'] && autoInit && typeof document !== 'undefined') {
+      autowireWsOnRoot(document);
+    }
+  } catch {}
+  if (autoInit) {
+    try {
+      try {
+        // Mount to body if no explicit root provided; ignore failures.
+        if (typeof document !== "undefined") {
+          try {
+            instance.mount(document.body);
+          } catch {
+            // mount may already have been called or not applicable; ignore
+          }
+        }
+      } catch {
+        /* ignore mount errors */
+      }
+
+      // Start runtime via canonical entrypoint
+      instance.run();
+    } catch {
+      // Swallow errors to keep factory safe for programmatic construction.
+    }
+  }
+
+  return instance;
 }
 
 /**
  * Default Hype instance for convenience
+ *
+ * Create a prewired default instance and auto-start it. Consumers who wish to
+ * manage lifecycle explicitly should call `createHype(...)` themselves.
  */
-export const hype = createHype();
+export const hype: Hype = createHype(undefined, {}, true);
+
+
 
 // Re-export common built-in plugins from the `plugins` directory so consumers can
 // import them directly from the main package (e.g. `import { pubsubPlugin } from './hype'`).

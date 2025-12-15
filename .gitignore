@@ -1,3 +1,9 @@
+
+
+playground/dev-server/public/static/dist/
+playground/dev-server/public/static/js/
+
+
 # Dependencies
 node_modules/
 doc/

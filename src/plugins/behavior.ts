@@ -13,6 +13,7 @@
  * - behavior wiring is activated only when this module is loaded/executed in the page
  */
 
+const debounceRegistry: WeakMap<ParentNode, Map<string, any>> = new WeakMap<ParentNode, Map<string, any>>();
 export type Unsubscribe = () => void;
 export type BehaviorAttach = (el: HTMLElement, spec: BehaviorSpec) => Unsubscribe;
 
@@ -671,8 +672,20 @@ function findScrollableAncestor(el: HTMLElement | null): Element | Window | null
   if (!el) return window;
   let node: HTMLElement | null = el.parentElement;
   while (node) {
-    const overflowY = window.getComputedStyle(node).overflowY;
-    if (overflowY === "auto" || overflowY === "scroll") return node;
+    const style = window.getComputedStyle(node);
+    const overflowY = style.overflowY;
+    const overflowX = style.overflowX;
+
+    // Determine if the element is configured to scroll on either axis and actually has overflow
+    const isOverflowY = overflowY === "auto" || overflowY === "scroll";
+    const isOverflowX = overflowX === "auto" || overflowX === "scroll";
+
+    // Require both a scrollable overflow style and content overflow (so we don't return containers
+    // that are marked scrollable but have no overflow content).
+    const canScrollY = isOverflowY && node.scrollHeight > node.clientHeight;
+    const canScrollX = isOverflowX && node.scrollWidth > node.clientWidth;
+
+    if (canScrollY || canScrollX) return node;
     node = node.parentElement;
   }
   return window;
@@ -855,93 +868,171 @@ export function attachBehaviorsFromAttribute(
  * Returns an unsubscribe function to remove observers/listeners.
  */
 export function attachDebounce(root: ParentNode = document, hype?: any, attrName = "data-hype-debounce") {
-  const handlers = new Map<HTMLElement, () => void>();
-  const timers = new Map<HTMLElement, number | null>();
+  // Module-scoped registry (WeakMap) that does not rely on globals or document availability.
+  // WeakMap keys are ParentNode (e.g. Element or document.body) -> value is a Map of attrName => entry.
+  type Entry = {
+    handlers: Map<HTMLElement, () => void>;
+    timers: Map<HTMLElement, number | null>;
+    wired: WeakSet<HTMLElement>;
+    observer: MutationObserver | null;
+    hype?: any;
+    refCount: number;
+  };
 
-  function wire(el: HTMLElement) {
-    if (handlers.has(el)) return;
-    const raw = el.getAttribute(attrName);
-    if (!raw) return;
-    const ms = Number(raw) || 300;
-    let timer: number | null = null;
+  const registry = debounceRegistry;
 
-    const onInput = (ev: Event) => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-      timer = window.setTimeout(() => {
-        // dispatch a custom event that Hype or other listeners can use
-        const ev2 = new CustomEvent("hype:debounced-input", {
-          detail: { originalEvent: ev },
-          bubbles: true,
-          composed: true,
-        });
-        el.dispatchEvent(ev2);
+  // Normalize Document -> body so callers using `document` vs `document.body` share the same registry entry.
+  const normRoot: ParentNode = root instanceof Document ? (root.body as unknown as ParentNode) : root;
 
-        // also trigger Hype if available (best-effort)
-        if (hype && typeof hype.trigger === "function") {
-          // ignore returned promise
-          try {
-            hype.trigger(el).catch(() => {
-              /* swallow */
-            });
-          } catch {
-            /* swallow */
-          }
+  let rootMap = registry.get(normRoot);
+  if (!rootMap) {
+    rootMap = new Map<string, Entry>();
+    registry.set(normRoot, rootMap);
+  }
+
+  let entry: Entry | undefined = rootMap.get(attrName);
+  if (!entry) {
+    const handlers = new Map<HTMLElement, () => void>();
+    const timers = new Map<HTMLElement, number | null>();
+    const wired = new WeakSet<HTMLElement>();
+    let observer: MutationObserver | null = null;
+
+    function wire(el: HTMLElement) {
+      // Avoid double wiring for the same element
+      if (handlers.has(el) || wired.has(el)) return;
+      const raw = el.getAttribute(attrName);
+      if (!raw) return;
+      const ms = Number(raw) || 300;
+      let timer: number | null = null;
+
+      // Insert placeholder to avoid races where wire is called concurrently
+      handlers.set(el, () => {});
+      wired.add(el);
+
+      const onInput = (ev: Event) => {
+        if (timer) {
+          window.clearTimeout(timer);
         }
+        timer = window.setTimeout(() => {
+          const ev2 = new CustomEvent("hype:debounced-input", {
+            detail: { originalEvent: ev },
+            bubbles: true,
+            composed: true,
+          });
 
-        timer = null;
-      }, ms);
-      timers.set(el, timer);
-    };
+          try {
+            el.dispatchEvent(ev2);
+          } catch {
+            /* swallow DOM dispatch errors */
+          }
 
-    el.addEventListener("input", onInput);
-    handlers.set(el, () => {
-      el.removeEventListener("input", onInput);
-      const t = timers.get(el);
-      if (t) window.clearTimeout(t);
-      timers.delete(el);
-    });
-  }
+          // Use the effective hype instance stored on the shared entry (if present),
+          // otherwise fall back to the hype argument passed to this call.
+          const effHype = (entry && entry.hype) || hype;
+          if (effHype && typeof effHype.trigger === "function") {
+            try {
+              // ignore returned promise
+              effHype.trigger(el).catch(() => {
+                /* swallow */
+              });
+            } catch {
+              /* swallow sync errors */
+            }
+          }
 
-  // initial scan
-  const initial = Array.from((root as Element).querySelectorAll?.(`[${attrName}]`) || []);
-  if (root instanceof Element && root.hasAttribute(attrName)) initial.unshift(root);
-  for (const el of initial) wire(el as HTMLElement);
+          timer = null;
+        }, ms);
+        timers.set(el, timer);
+      };
 
-  // observe new elements
-  const observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      for (const node of Array.from(m.addedNodes)) {
-        if (!(node instanceof Element)) continue;
-        if (node.hasAttribute && node.hasAttribute(attrName)) wire(node as HTMLElement);
-        node.querySelectorAll?.(`[${attrName}]`)?.forEach((c: Element) => wire(c as HTMLElement));
+      el.addEventListener("input", onInput);
+
+      // replace placeholder with real unsubscribe
+      handlers.set(el, () => {
+        el.removeEventListener("input", onInput);
+        const t = timers.get(el);
+        if (t) window.clearTimeout(t);
+        timers.delete(el);
+        handlers.delete(el);
+        try {
+          wired.delete(el);
+        } catch {
+          /* ignore WeakSet delete errors in exotic environments */
+        }
+      });
+    }
+
+    // initial scan (use normalized root to avoid separate entries for document vs body)
+    const scanRoot = normRoot as Element;
+    const initial = Array.from((scanRoot as Element).querySelectorAll?.(`[${attrName}]`) || []);
+    if (scanRoot instanceof Element && scanRoot.hasAttribute(attrName)) initial.unshift(scanRoot);
+    for (const el of initial) wire(el as HTMLElement);
+
+    // observe dynamic additions
+    observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of Array.from(m.addedNodes)) {
+          if (!(node instanceof Element)) continue;
+          if (node.hasAttribute && node.hasAttribute(attrName)) wire(node as HTMLElement);
+          node.querySelectorAll?.(`[${attrName}]`)?.forEach((c: Element) => wire(c as HTMLElement));
+        }
       }
-    }
-  });
+    });
 
-  try {
-    if (typeof (root as Element).querySelectorAll === "function") {
-      observer.observe(root as Element, { childList: true, subtree: true });
-    } else {
-      observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      if (typeof (scanRoot as Element).querySelectorAll === "function") {
+        observer.observe(scanRoot as Element, { childList: true, subtree: true });
+      } else {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch {
+      /* ignore observation errors (non-browser environments) */
     }
-  } catch {
-    // ignore observation errors (non-browser environments)
+
+    entry = { handlers, timers, wired, observer, hype: hype, refCount: 0 };
+    rootMap.set(attrName, entry);
   }
 
-  return () => {
-    observer.disconnect();
-    handlers.forEach((unsub: () => void, _el: HTMLElement) => {
+  // Allow caller to update the stored hype instance for this registry entry.
+  if (hype) {
+    try {
+      entry.hype = hype;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // increase reference count for this caller
+  entry.refCount++;
+
+  const cleanup = () => {
+    // decrement and cleanup when no callers remain
+    entry!.refCount--;
+    if (entry!.refCount <= 0) {
       try {
-        unsub();
+        entry!.observer?.disconnect();
       } catch {
         /* ignore */
       }
-    });
-    handlers.clear();
-    timers.clear();
+      entry!.handlers.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {
+          /* ignore */
+        }
+      });
+      entry!.handlers.clear();
+      entry!.timers.clear();
+
+      // remove entry from rootMap and registry
+      rootMap!.delete(attrName);
+      if (rootMap!.size === 0) {
+        registry.delete(normRoot);
+      }
+    }
   };
+
+  return cleanup;
 }
 
 /* -------------------------------

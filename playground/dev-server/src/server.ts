@@ -6,9 +6,6 @@
  *  - HSTS header prepared for production (only applied when NODE_ENV === 'production')
  *  - trust proxy when behind a reverse proxy (production)
  *  - Origin validation for WS and SSE endpoints in production
- *  - Rate limiting for login endpoint
- *  - CSP report endpoint (/csp-report) to collect CSP violation reports
- *  - Runtime warnings when default secrets are detected
  *
  * Notes:
  *  - This server is intended for local development and demo usage. The production
@@ -21,7 +18,7 @@ import express from "express";
 import http from "http";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-// @ts-ignore: optional dev dependency in the playground dev-server; types may not be present in all environments
+// @ts-ignore: optional dev dependency in the playground dev-server;
 import csurf from "csurf";
 import { WebSocketServer, WebSocket } from "ws";
 import { fileURLToPath } from "url";
@@ -31,6 +28,65 @@ import { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { createStockAnalytics } from "./analytics/stocks.js";
+// @ts-ignore: optional dev dependency in the playground dev-server
+import Handlebars from "handlebars";
+
+/**
+ * AnalyticsService
+ *
+ * Lightweight service encapsulating the RxJS pipeline that computes
+ * technical indicators for incoming ticks. It exposes:
+ *  - pushTick(tick): push a new tick into the pipeline
+ *  - metrics$: Observable emitting computed metrics per symbol
+ *
+ * This keeps analytics as a domain service and avoids sprinkling Subject
+ * usage across the rest of the server code.
+ */
+export class AnalyticsService {
+  settings: {
+    emaFast: number;
+    emaSlow: number;
+    rsiPeriod: number;
+    bbPeriod: number;
+    bbStd: number;
+  };
+  input: any;
+  metrics$: any;
+
+  constructor(opts?: { emaFast?: number; emaSlow?: number; rsiPeriod?: number; bbPeriod?: number; bbStd?: number }) {
+    this.settings = {
+      emaFast: opts?.emaFast ?? 9,
+      emaSlow: opts?.emaSlow ?? 21,
+      rsiPeriod: opts?.rsiPeriod ?? 14,
+      bbPeriod: opts?.bbPeriod ?? 20,
+      bbStd: opts?.bbStd ?? 2,
+    };
+
+    // Delegate analytics implementation to the incremental analytics module.
+    // createStockAnalytics returns { input: Subject<StockTick>, metrics$: Observable<StockMetrics> }.
+    const analytics = createStockAnalytics({
+      emaFast: this.settings.emaFast,
+      emaSlow: this.settings.emaSlow,
+      rsiPeriod: this.settings.rsiPeriod,
+      bbPeriod: this.settings.bbPeriod,
+      bbStd: this.settings.bbStd,
+    });
+
+    // reuse the Subject and metrics$ from the analytics module
+    this.input = analytics.input;
+    this.metrics$ = analytics.metrics$;
+  }
+
+  pushTick(tick: { symbol: string; price: number; change?: number; timestamp: number }) {
+    // Defensive: don't let analytics errors bubble into the producer
+    try {
+      this.input.next(tick);
+    } catch {
+      // ignore
+    }
+  }
+}
 
 /* -------------------------
    Config / allowed origins
@@ -159,7 +215,10 @@ type ClientMsg =
   | { type: "event"; id: string; name: string; payload?: any; tx?: number }
   | { type: "heartbeat" };
 
-type ServerMsg = { type: "patch"; id: string; html: string; tx?: number } | { type: "redirect"; url: string } | { type: "event"; name: string; payload?: any };
+type ServerMsg =
+  | { type: "patch"; id: string; html: string; tx?: number; fp?: string }
+  | { type: "redirect"; url: string }
+  | { type: "event"; name: string; payload?: any };
 
 interface Item {
   id: string;
@@ -216,6 +275,27 @@ const stocksClients = new Set<WebSocket>();
 // SSE clients (raw http.ServerResponse objects)
 const sseClients = new Set<ServerResponse>();
 
+// Analytics service (realtime indicators)
+const analytics = new AnalyticsService({ emaFast: 9, emaSlow: 21, rsiPeriod: 14 });
+
+// Subscribe to analytics metrics and broadcast them to connected clients (WS + SSE)
+analytics.metrics$.subscribe((m: any) => {
+  const payload = { type: "stock:metrics", ...m };
+  const text = JSON.stringify(payload);
+  // Broadcast to WebSocket clients
+  for (const ws of stocksClients) {
+    try {
+      ws.send(text);
+    } catch {}
+  }
+  // Broadcast to SSE clients
+  for (const res of sseClients) {
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
+  }
+});
+
 /* -------------------------
    Helpers
    ------------------------- */
@@ -244,6 +324,49 @@ function renderItemsFragment(): string {
   return `<ul id="items-list-1">${list}</ul>`;
 }
 
+/**
+ * Compute a tagged fingerprint for a string.
+ *
+ * Returns a string in the form "<ALG>:<hex>", where ALG indicates the
+ * algorithm used, for example "FNV1A64" or "FNV1A32". The tag helps clients
+ * reliably interpret which algorithm produced the fingerprint.
+ *
+ * Usage:
+ *   computeFingerprint(html)                      // default attempts 64-bit, falls back to 32-bit
+ *   computeFingerprint(html, { algorithm: 'fnv1a32' })
+ */
+function computeFingerprint(input: string, opts?: { algorithm?: "fnv1a64" | "fnv1a32" }): string {
+  const desired = (opts && opts.algorithm) || "fnv1a64";
+  const s = String(input ?? "");
+
+  // Prefer BigInt/TextEncoder path for 64-bit FNV-1a when requested.
+  if (desired === "fnv1a64") {
+    try {
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(s);
+      const FNV_OFFSET_BASIS_64 = 0xcbf29ce484222325n;
+      const FNV_PRIME_64 = 0x100000001b3n;
+      let hash = FNV_OFFSET_BASIS_64;
+      for (let i = 0; i < bytes.length; i++) {
+        hash ^= BigInt(bytes[i]);
+        hash = (hash * FNV_PRIME_64) & 0xffffffffffffffffn;
+      }
+      // Prefix with algorithm tag so clients know how to interpret the fp.
+      return "FNV1A64:" + hash.toString(16).padStart(16, "0");
+    } catch {
+      // If BigInt/TextEncoder isn't available, fall through to 32-bit.
+    }
+  }
+
+  // 32-bit FNV-1a fallback (deterministic, widely available).
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return "FNV1A32:" + (h >>> 0).toString(16).padStart(8, "0");
+}
+
 function renderRegionHtmlForId(id: string) {
   // Simple example: return a fragment that the client will use to patch a region.
   // If you need to include inline scripts here, use res.locals.cspNonce when serving via Express.
@@ -253,7 +376,10 @@ function renderRegionHtmlForId(id: string) {
 function broadcastPatch(id: string, html: string, tx?: number) {
   const subs = liveSubscribers.get(id);
   if (!subs) return;
-  const msg: ServerMsg = { type: "patch", id, html, tx };
+  // Compute a tagged fingerprint for the html fragment so clients can skip redundant swaps.
+  // The returned value is prefixed with the algorithm tag, e.g. "FNV1A64:..." or "FNV1A32:...".
+  const fp = computeFingerprint(html);
+  const msg: ServerMsg = { type: "patch", id, html, tx, fp };
   const data = JSON.stringify(msg);
   for (const ws of subs) {
     try {
@@ -807,10 +933,111 @@ app.post("/items/:id/toggle", (req, res) => {
 
   const accept = (req.headers["accept"] || "").toString();
   if (accept.includes("application/json")) {
-    res.json({ ok: true, patch: { id: "items-list-1", html: regionHtml } });
+    // Include a tagged fingerprint so clients can decide whether to apply the patch.
+    // Fingerprints are tagged with the algorithm used (e.g. "FNV1A64:...") so the client
+    // runtime can reliably interpret and compare them.
+    const fp = computeFingerprint(regionHtml);
+    res.json({ ok: true, patch: { id: "items-list-1", html: regionHtml, fp } });
   } else {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(regionHtml);
+  }
+});
+
+/* -------------------------
+   Stocks HTTP partial/json endpoint
+   ------------------------- */
+
+/**
+ * GET /stocks
+ *
+ * Supports:
+ *  - ?partial=rows            -> returns JSON { ok, patch: { id: 'stocks-table', html, fp }, meta }
+ *  - Accept: application/json -> same as partial=rows (JSON)
+ *  - otherwise returns the table wrapper HTML with rows replaced server-side
+ *
+ * Query params:
+ *  - page, perPage, q  (filter by symbol substring)
+ */
+app.get("/stocks", (req, res) => {
+  // Basic origin check: mirror SSE/WS policy (only relevant in production mode)
+  if (NODE_ENV === "production" && !isOriginAllowed(req)) {
+    res.status(403).json({ ok: false, error: "origin not allowed" });
+    return;
+  }
+
+  // Parse query params
+  const q = (req.query.q || "") as string;
+  const page = Math.max(1, Number((req.query.page as string) || 1));
+  const perPage = Math.max(1, Math.min(200, Number((req.query.perPage as string) || 25)));
+  const partial = (req.query.partial || "") as string;
+  const accept = (req.headers["accept"] || "").toString();
+
+  // Filter & transform pipeline
+  const filtered = Object.values(stocks)
+    .filter((s) => (q ? s.symbol.toLowerCase().includes(q.toLowerCase()) : true))
+    .map((s) => ({
+      symbol: s.symbol,
+      price: s.price != null ? s.price.toFixed(2) : "—",
+      change: s.change != null ? (s.change > 0 ? `+${s.change.toFixed(2)}` : s.change.toFixed(2)) : "—",
+      last: new Date(s.timestamp).toLocaleTimeString(),
+      timestamp: s.timestamp,
+    }));
+
+  const total = filtered.length;
+  const offset = (page - 1) * perPage;
+  const pageItems = filtered.slice(offset, offset + perPage);
+
+  const meta = {
+    total,
+    page,
+    perPage,
+    pages: Math.ceil(total / perPage),
+    hasMore: offset + perPage < total,
+    query: { q },
+  };
+
+  // Render rows using Handlebars rows partial/template (views/partials/stocks/rows.hbs)
+  const rowsPath = path.join(__dirname, "..", "views", "partials", "stocks", "rows.hbs");
+  let rowsHtml = "";
+  try {
+    const src = fs.readFileSync(rowsPath, "utf8");
+    const tmpl = Handlebars.compile(src);
+    rowsHtml = tmpl({ symbols: pageItems, meta });
+  } catch (e) {
+    // If template read/compile fails, fallback to simple string construction (safe-escaped values)
+    rowsHtml = pageItems
+      .map(
+        (it) =>
+          `<tr id="row-${it.symbol}" class="bg-white/3" data-symbol="${it.symbol}" data-ts="${it.timestamp}">` +
+          `<td class="py-3"><strong class="font-mono text-white">${escapeHtml(it.symbol)}</strong></td>` +
+          `<td class="py-3 font-mono text-slate-200 price" data-price="${escapeHtml(String(it.price))}">${escapeHtml(String(it.price))}</td>` +
+          `<td class="py-3 font-mono text-slate-200 change" data-change="${escapeHtml(String(it.change))}">${escapeHtml(String(it.change))}</td>` +
+          `<td class="py-3 text-slate-400 font-mono last-updated" data-last="${it.timestamp}">${escapeHtml(it.last)}</td>` +
+          `</tr>`,
+      )
+      .join("");
+  }
+
+  // If client expects JSON partial or explicitly asked for partial=rows, return JSON with patch
+  if (partial === "rows" || accept.includes("application/json")) {
+    const fp = computeFingerprint(rowsHtml);
+    res.json({ ok: true, patch: { id: "stocks-table", html: rowsHtml, fp }, meta });
+    return;
+  }
+
+  // Otherwise return wrapper HTML with rows inserted into the tbody#rows
+  try {
+    const wrapperPath = path.join(__dirname, "..", "views", "partials", "stocks-table.html");
+    let wrapper = fs.readFileSync(wrapperPath, "utf8");
+    // Replace the <tbody id="rows">...</tbody> block with our rendered rows. Use a non-greedy match.
+    wrapper = wrapper.replace(/<tbody\s+id=["']rows["'][\s\S]*?<\/tbody>/i, `<tbody id="rows" class="divide-y divide-white/5">${rowsHtml}</tbody>`);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(wrapper);
+  } catch (e) {
+    // Fallback: send only rowsHtml if wrapper file missing
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(rowsHtml);
   }
 });
 
@@ -970,7 +1197,9 @@ wssLive.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       liveSubscribers.get(nodeId)!.add(ws);
 
       const fragment = renderRegionHtmlForId(nodeId);
-      const reply: ServerMsg = { type: "patch", id: nodeId, html: fragment };
+      // Compute a tagged fingerprint so the client can skip updating if content hasn't changed.
+      const fp = computeFingerprint(fragment);
+      const reply: ServerMsg = { type: "patch", id: nodeId, html: fragment, fp };
       try {
         ws.send(JSON.stringify(reply));
       } catch {}
@@ -1087,6 +1316,13 @@ const stockUpdater = setInterval(() => {
   s.price = Math.max(0.01, +(s.price + change).toFixed(2));
   s.change = change;
   s.timestamp = Date.now();
+
+  // Feed analytics service with the latest tick for this symbol
+  try {
+    analytics.pushTick({ symbol: s.symbol, price: s.price, change: s.change, timestamp: s.timestamp });
+  } catch (e) {
+    // analytics failure should not break the updater loop
+  }
 
   // Broadcast to WS and SSE clients
   broadcastStockUpdate(s);

@@ -1,5 +1,4 @@
 import type {
-  HypeEventName,
   HypeEventDetail,
   BeforeRequestDetail,
   BeforeSwapDetail,
@@ -10,12 +9,13 @@ import type {
   RequestContext,
   ResponseContext,
 } from "./types";
+import type { IEventSystem, ObservableLike, HypeEvent } from "./interfaces/event-system.interface";
 
 /**
  * Event system for Hype
  * Provides a centralized way to dispatch and listen for Hype events
  */
-export class EventSystem {
+export class EventSystem implements IEventSystem<HypeEventDetail> {
   private debug: boolean;
 
   constructor(debug = false) {
@@ -33,7 +33,10 @@ export class EventSystem {
    * Dispatch a custom event on an element
    * Returns true if the event was not cancelled
    */
-  dispatch<T extends HypeEventDetail>(element: HTMLElement, eventName: HypeEventName, detail: T): boolean {
+  // Accept arbitrary string event names to allow adapters/tests to emit
+  // non-core Hype event names (e.g. custom namespaces). Implementations may
+  // choose to enforce Hype-specific names but the interface remains permissive.
+  dispatch(element: HTMLElement, eventName: string, detail?: HypeEventDetail): boolean {
     if (this.debug) {
       // Produce a compact, deterministic summary to avoid logging full DOM trees.
       // Many event detail objects include a `context.element` which, when logged
@@ -61,10 +64,55 @@ export class EventSystem {
     const event = new CustomEvent(eventName, {
       bubbles: true,
       cancelable: true,
-      detail,
+      detail: detail as any,
     });
 
-    return element.dispatchEvent(event);
+    const dispatched = element.dispatchEvent(event);
+
+    return dispatched;
+  }
+
+  /**
+   * Return an Observable-like subscribable for a given event name.
+   * For DOM-hosted runtimes we create a lightweight subscribable that attaches
+   * a global listener (bubbles) and translates DOM CustomEvents into the
+   * HypeEvent<{...}> shape expected by consumers.
+   */
+  asObservable(eventName: string): ObservableLike<HypeEvent<HypeEventDetail>> {
+    return {
+      subscribe: (handler: (payload: HypeEvent<HypeEventDetail>) => void) => {
+        const listener = (ev: Event) => {
+          try {
+            const ce = ev as CustomEvent;
+            const el = (ce && (ce.target as HTMLElement)) || (ev as any).target || null;
+            handler({ element: el as HTMLElement, detail: (ce as any)?.detail });
+          } catch {
+            /* swallow handler errors */
+          }
+        };
+        // Use capture false so we follow normal bubbling semantics; listeners can
+        // inspect event.detail.context.element to find originating node.
+        window.addEventListener(eventName, listener as EventListener);
+        return {
+          unsubscribe: () => {
+            try {
+              window.removeEventListener(eventName, listener as EventListener);
+            } catch {
+              /* ignore */
+            }
+          },
+        };
+      },
+      // pipe is optional on ObservableLike; DOM subscribable does not implement it.
+    };
+  }
+
+  /**
+   * Convenience alias that returns the same shape as asObservable for callers
+   * that prefer an `on(name).subscribe()` surface.
+   */
+  on(eventName: string): ObservableLike<HypeEvent<HypeEventDetail>> {
+    return this.asObservable(eventName);
   }
 
   /**
@@ -162,6 +210,18 @@ export class EventSystem {
 }
 
 /**
+ * Default event system factory + default instance
+ */
+export function createEventSystem(debug = false): IEventSystem<HypeEventDetail> {
+  return new EventSystem(debug);
+}
+
+/**
  * Default event system instance
  */
-export const eventSystem = new EventSystem();
+export const eventSystem = createEventSystem();
+
+/**
+ * Default export for convenience
+ */
+export default eventSystem;

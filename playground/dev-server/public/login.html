@@ -109,8 +109,31 @@
     </footer>
   </div>
 
-  <!-- External loader module wires auth bindings & attempts to load the Hype runtime.
-       Include a nonce placeholder so the server can inject a per-request nonce if desired. -->
-  <script nonce="%CSP_NONCE%" type="module" src="/static/js/loader.js"></script>
+  <!-- Explicit markup-first initialization.
+       Authors must import the runtime and call init() — no automatic loader.
+       Two recommended patterns (choose one):
+
+       1) Simple, canonical (uses default runtime bundle):
+          <script type="module">
+            import { hype } from '/static/js/hype.js';
+            hype.init();
+          </script>
+
+       2) Factory-based (e.g. rx-bundled build exposes createHype):
+          <script type="module">
+            import { createHype } from '/static/js/hype-rx.js';
+            // createHype() will create and (by default) initialize the instance.
+            // To create without auto-init for BC: createHype(undefined, false)
+            createHype();
+          </script>
+
+       Use whichever bundle you deployed to /static/js/. This makes initialization
+       explicit, deterministic, and CSP-friendly (no loader shims).
+  -->
+  <script type="module" nonce="%CSP_NONCE%">
+    // Default canonical snippet for this example:
+    import { hype } from '/static/js/hype.js';
+    hype.init();
+  </script>
 </body>
 </html>

@@ -87,9 +87,6 @@ export class Hype {
   private attrs: HypeAttributes;
   private observer: MutationObserver | null = null;
 
-  // Plugin cleanup is handled centrally via `_attachedPluginCleanups`.
-  // Per-feature leftover cleanup fields removed.
-
   // cleanup functions returned by attached plugins (if plugin returns a teardown)
   private _attachedPluginCleanups: Array<() => void> = [];
 

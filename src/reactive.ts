@@ -373,86 +373,30 @@ export class ReactiveSystem {
       const update = () => {
         const shouldShow = this.evaluateExpression(expression, context);
 
-        // Debug: surface expression evaluation result and relevant context when debug mode is enabled.
-        if (this.debug) {
-          try {
-            // eslint-disable-next-line no-console
-            console.debug("[reactive][show] expression:", expression, "->", shouldShow, "element:", el, "stateSnapshot:", { ...context.state });
-          } catch {
-            // ignore logging errors
-          }
-        }
+        // Use centralized safe debug helper to avoid repeating try/catch in multiple places.
+        this.safeDebug("[reactive][show] expression:", expression, "->", shouldShow, "element:", el, "stateSnapshot:", { ...context.state });
 
         if (shouldShow) {
           // Log previous display value and the intended assignment for easier tracing
-          if (this.debug) {
-            try {
-              // eslint-disable-next-line no-console
-              console.debug("[reactive][show] setting display to originalDisplay:", originalDisplay, "previous display:", el.style.display);
-            } catch {
-              /* ignore logging errors */
-            }
-          }
+          this.safeDebug("[reactive][show] setting display to originalDisplay:", originalDisplay, "previous display:", el.style.display);
 
-          // Set inline display to empty string so style.display === '' (visible)
-          try {
-            el.style.setProperty("display", "");
-          } catch {
-            // fallback to direct assignment if setProperty not supported
-            try {
-              // eslint-disable-next-line no-param-reassign
-              el.style.display = "";
-            } catch {
-              /* ignore */
-            }
-          }
+          // Use centralized setter which attempts CSSOM first and falls back to direct assignment
+          this.setDisplay(el, "");
 
           el.removeAttribute("hidden");
 
           // Confirm assignment
-          if (this.debug) {
-            try {
-              // eslint-disable-next-line no-console
-              console.debug("[reactive][show] after set -> display:", el.style.display, "hidden:", el.hasAttribute("hidden"));
-            } catch {
-              /* ignore logging errors */
-            }
-          }
+          this.safeDebug("[reactive][show] after set -> display:", el.style.display, "hidden:", el.hasAttribute("hidden"));
         } else {
           // Log previous display value and the intended assignment for easier tracing
-          if (this.debug) {
-            try {
-              // eslint-disable-next-line no-console
-              console.debug("[reactive][show] setting display to 'none' previous display:", el.style.display);
-            } catch {
-              /* ignore logging errors */
-            }
-          }
+          this.safeDebug("[reactive][show] setting display to 'none' previous display:", el.style.display);
 
-          // Use CSSOM setProperty to set explicit 'none'
-          try {
-            el.style.setProperty("display", "none");
-          } catch {
-            // fallback to direct assignment
-            try {
-              // eslint-disable-next-line no-param-reassign
-              el.style.display = "none";
-            } catch {
-              /* ignore */
-            }
-          }
+          this.setDisplay(el, "none");
 
           el.setAttribute("hidden", "");
 
           // Confirm assignment
-          if (this.debug) {
-            try {
-              // eslint-disable-next-line no-console
-              console.debug("[reactive][show] after set -> display:", el.style.display, "hidden:", el.hasAttribute("hidden"));
-            } catch {
-              /* ignore logging errors */
-            }
-          }
+          this.safeDebug("[reactive][show] after set -> display:", el.style.display, "hidden:", el.hasAttribute("hidden"));
         }
       };
 
@@ -954,15 +898,44 @@ export class ReactiveSystem {
   }
 
   /**
-   * Debug logging (only outputs when debug mode is enabled)
+   * Safe debug helper: wraps console.debug with defensive try/catch and respects debug flag.
    *
-   * @private
-   * @param {...any[]} args - Arguments to log
+   * Centralizing debug output avoids repeated try/catch blocks across the codebase
+   * and ensures debug logging never throws. Use `safeDebug` for verbose debug output
+   * and `log` as a backwards-compatible alias.
+   */
+  private safeDebug(...args: any[]): void {
+    if (!this.debug) return;
+    try {
+      // eslint-disable-next-line no-console
+      console.debug("[Hype Reactive]", ...args);
+    } catch {
+      // swallow logging errors to avoid breaking app logic
+    }
+  }
+
+  /**
+   * Set element display with CSSOM when available, falling back to direct assignment.
+   * Accepts '' for visible and 'none' for hidden.
+   */
+  private setDisplay(el: HTMLElement, value: string): void {
+    try {
+      el.style.setProperty("display", value);
+    } catch {
+      try {
+        // eslint-disable-next-line no-param-reassign
+        el.style.display = value;
+      } catch {
+        // ignore styling failures
+      }
+    }
+  }
+
+  /**
+   * Backwards-compatible log wrapper (keeps existing API).
    */
   private log(...args: any[]): void {
-    if (this.debug) {
-      console.log("[Hype Reactive]", ...args);
-    }
+    this.safeDebug(...args);
   }
 
   /**

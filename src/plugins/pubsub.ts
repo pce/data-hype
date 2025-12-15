@@ -11,10 +11,17 @@
  *  - Pub/Sub is added only when this module runs; HTML remains valid and functional without JavaScript.
  */
 
+import { Hype } from "../hype";
+
 export type Unsubscribe = () => void;
 
 export type PubFn = (topic: string, payload?: any) => void;
 export type SubFn = (topic: string, handler: (payload?: any) => void) => Unsubscribe;
+
+export interface IHypePubsub extends Hype {
+  pub: PubFn;
+  sub: SubFn;
+}
 
 export function createHypePubsub(): { pub: PubFn; sub: SubFn } {
   const subs = new Map<string, Set<(payload?: any) => void>>();
@@ -86,7 +93,7 @@ export function attachToHype(hypeInstance: any) {
   } catch {
     // fallback to simple assignment if defineProperty fails
     // eslint-disable-next-line no-param-reassign
-    (hypeInstance as any).pub = ps.pub;
+    (hypeInstance as IHypePubsub).pub = ps.pub;
   }
 
   try {
@@ -98,20 +105,18 @@ export function attachToHype(hypeInstance: any) {
     });
   } catch {
     // eslint-disable-next-line no-param-reassign
-    (hypeInstance as any).sub = ps.sub;
+    (hypeInstance as IHypePubsub).sub = ps.sub;
   }
 
   const cleanup = () => {
     try {
-      // prefer deleting the properties to restore original shape
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (hypeInstance as any).pub;
+      // prefer deleting the properties to restore original shape using Reflect.deleteProperty for correctness
+      Reflect.deleteProperty(hypeInstance as IHypePubsub, "pub");
     } catch {
       /* ignore */
     }
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (hypeInstance as any).sub;
+      Reflect.deleteProperty(hypeInstance as IHypePubsub, "sub");
     } catch {
       /* ignore */
     }

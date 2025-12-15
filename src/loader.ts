@@ -16,9 +16,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import createClient, { defaultClient as defaultAuthClient } from "./client";
+// client import removed from core loader. Consumers may provide an AuthClient to createLoader().
 
-const HYPE_PATH = "/static/js/hype.js";
+// default HYPE path removed - loader is now configurable via `createLoader(opts)`
+// Consumers may pass `hypePath` to the factory.
 
 declare global {
   interface Window {
@@ -28,195 +29,131 @@ declare global {
   }
 }
 
-type JsonResp = { ok?: boolean; [k: string]: any };
-type LoginResult = { ok: boolean; user?: any; error?: string; [k: string]: any };
+
 
 /**
  * We prefer the provided default immutable auth client instance exported by
  * `src/client.ts`. If for some reason that isn't available (eg. a different
  * bundling arrangement), fall back to creating a new client with defaults.
  */
-const authClient = (defaultAuthClient || createClient()) as {
-  fetchJson?: (url: string, init?: RequestInit) => Promise<JsonResp>;
-  getCsrfToken: () => Promise<string | null>;
-  login: (username: string, password: string) => Promise<LoginResult>;
-  loginWithPayload?: (payload: any) => Promise<LoginResult>;
-  logout: () => Promise<JsonResp>;
-  me: () => Promise<JsonResp>;
+export type AuthClient = {
+  fetchJson?: (url: string, init?: RequestInit) => Promise<any>;
+  getCsrfToken?: () => Promise<string | null>;
+  login?: (username: string, password: string) => Promise<any>;
+  loginWithPayload?: (payload: any) => Promise<any>;
+  logout?: () => Promise<any>;
+  me?: () => Promise<any>;
   bindLoginForm?: (scope?: ParentNode) => void;
-  bindLogoutButtons: (scope?: ParentNode) => void;
+  bindLogoutButtons?: (scope?: ParentNode) => void;
 };
 
 /**
- * Attempt to dynamically import the Hype runtime.
- * Non-blocking: failures are logged but do not break page functionality.
+ * Config-driven loader factory.
  *
- * The loader uses a dynamic import with `webpackIgnore: true` so bundlers don't
- * try to include the runtime in the docs build. If the runtime is not present
- * the loader silently continues and pages still function (with reduced behavior).
+ * Usage:
+ *   const loader = createLoader({ hypePath: '/static/js/hype.js', authClient });
+ *   await loader.loadHypeRuntime();
+ *
+ * The factory avoids importing or assuming an application-level client. If an
+ * `authClient` is provided it will be used to expose helper bindings; otherwise
+ * auth helpers are no-ops.
  */
-export async function loadHypeRuntime(): Promise<any | null> {
-  try {
-    const mod = await import(/* webpackIgnore: true */ HYPE_PATH).catch(() => null);
-    if (!mod) {
-      window.hypeModule = null;
-      window.hypeModuleInitialized = false;
-      if (window.__hype_loader_debug) console.debug("[loader] Hype runtime not available");
-      return null;
-    }
+export function createLoader(opts?: { hypePath?: string; authClient?: AuthClient }) {
+  const hypePath = opts?.hypePath ?? "/static/js/hype.js";
+  const auth = opts?.authClient;
 
-    const hype = (mod && (mod.hype || mod.default || mod)) || null;
-    window.hypeModule = hype;
-
-    if (hype && typeof hype.init === "function") {
-      try {
-        const maybe = hype.init();
-        if (maybe && typeof (maybe as any).then === "function") await maybe;
-        window.hypeModuleInitialized = true;
-        if (window.__hype_loader_debug) console.debug("[loader] Hype runtime initialized");
-      } catch (err) {
-        window.hypeModuleInitialized = false;
-        // Keep loader resilient: log and continue
-        // eslint-disable-next-line no-console
-        console.warn("[loader] Hype.init() failed:", err);
-      }
-    } else {
-      window.hypeModuleInitialized = false;
-      if (window.__hype_loader_debug) console.debug("[loader] Hype module loaded but no init() available");
-    }
-
-    return hype;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn("[loader] Failed to import Hype runtime:", err);
-    window.hypeModule = null;
-    window.hypeModuleInitialized = false;
-    return null;
-  }
-}
-
-/* ---------------------------
-   Auth / CSRF helpers (delegated to immutable authClient)
-   --------------------------- */
-
-/**
- * Fetch a CSRF token from the server.
- * Delegates to the auth client instance.
- */
-export async function getCsrfToken(): Promise<string | null> {
-  return authClient.getCsrfToken();
-}
-
-/**
- * Perform login via the server endpoint.
- * Delegates to the auth client instance.
- */
-export async function login(username: string, password: string): Promise<LoginResult> {
-  return authClient.login(username, password);
-}
-
-/**
- * Logout via POST /logout. Server clears auth cookie.
- * Delegates to the auth client instance.
- */
-export async function logout(): Promise<JsonResp> {
-  return authClient.logout();
-}
-
-/**
- * Fetch current authenticated user info.
- * Delegates to the auth client instance.
- */
-export async function me(): Promise<JsonResp> {
-  return authClient.me();
-}
-
-/* ---------------------------
-   DOM helpers for simple auth forms (delegated)
-   --------------------------- */
-
-// Legacy alias `bindLoginForms` removed. Use `bindLoginForm(scope)` instead.
-
-/**
- * Preferred programmatic binder name: bindLoginForm
- * This is provided as a convenience so callers can use the clearer singular API.
- */
-export function bindLoginForm(scope: ParentNode = document): void {
-  const fn = (authClient as any).bindLoginForm;
-  if (typeof fn === "function") {
-    return fn(scope);
-  }
-  // no-op if the client doesn't expose the binder; keeps loader resilient
-  return;
-}
-
-/**
- * Bind elements with [data-logout] in the provided scope (default: document).
- * Delegates to the auth client instance's logout binder.
- */
-export function bindLogoutButtons(scope: ParentNode = document): void {
-  return authClient.bindLogoutButtons(scope);
-}
-
-/* ---------------------------
-   Auto-init on DOMContentLoaded
-   --------------------------- */
-
-/**
- * On DOMContentLoaded:
- *  - Bind simple login forms and logout buttons (so pages work without extra JS)
- *  - Try to load the Hype runtime (best-effort)
- *  - Dispatch a `hype:loader:ready` event with runtime availability info
- */
-if (typeof document !== "undefined") {
-  const __hype_loader_init = async () => {
+  async function loadHypeRuntime(): Promise<any | null> {
     try {
-      bindLoginForm();
-      bindLogoutButtons();
+      const mod = await import(/* webpackIgnore: true */ hypePath).catch(() => null);
+      if (!mod) {
+        (window as any).hypeModule = null;
+        (window as any).hypeModuleInitialized = false;
+        if ((window as any).__hype_loader_debug) console.debug("[loader] Hype runtime not available");
+        return null;
+      }
+
+      // Normalize runtime export shapes:
+      // - preferred: module provides `createHype()` factory -> call it to get an instance
+      // - fallback: module exports a ready instance as `hype` / default / module itself
+      let runtime: any = null;
+      try {
+        if (mod && typeof (mod as any).createHype === "function") {
+          runtime = (mod as any).createHype();
+        } else {
+          runtime = (mod && (mod.hype || mod.default || mod)) || null;
+        }
+      } catch (err) {
+        runtime = null;
+        if ((window as any).__hype_loader_debug) console.warn("[loader] createHype() threw:", err);
+      }
+
+      (window as any).hypeModule = runtime;
+
+      if (runtime) {
+        try {
+          // Preferred startup method is `run()` (explicit and non-guessing).
+          // Fall back to `init()` for older runtimes that still expose it.
+          if (typeof (runtime as any).run === "function") {
+            const maybe = (runtime as any).run();
+            if (maybe && typeof (maybe as any).then === "function") await maybe;
+            (window as any).hypeModuleInitialized = true;
+            if ((window as any).__hype_loader_debug) console.debug("[loader] Hype runtime started via run()");
+          } else if (typeof (runtime as any).init === "function") {
+            const maybe = (runtime as any).init();
+            if (maybe && typeof (maybe as any).then === "function") await maybe;
+            (window as any).hypeModuleInitialized = true;
+            if ((window as any).__hype_loader_debug) console.debug("[loader] Hype runtime initialized via init()");
+          } else {
+            (window as any).hypeModuleInitialized = false;
+            if ((window as any).__hype_loader_debug) console.debug("[loader] Hype module loaded but no run()/init() available");
+          }
+        } catch (err) {
+          (window as any).hypeModuleInitialized = false;
+          // Keep loader resilient: log and continue
+          // eslint-disable-next-line no-console
+          console.warn("[loader] Hype startup failed:", err);
+        }
+      } else {
+        (window as any).hypeModuleInitialized = false;
+        if ((window as any).__hype_loader_debug) console.debug("[loader] Hype runtime not available after import");
+      }
+
+      return runtime;
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn("[loader] auth bind failed:", err);
+      console.warn("[loader] Failed to import Hype runtime:", err);
+      (window as any).hypeModule = null;
+      (window as any).hypeModuleInitialized = false;
+      return null;
     }
-
-    try {
-      await loadHypeRuntime();
-    } catch {
-      // errors are already handled/logged by loadHypeRuntime
-    }
-
-    try {
-      document.dispatchEvent(
-        new CustomEvent("hype:loader:ready", {
-          detail: {
-            runtimeAvailable: !!window.hypeModule,
-            runtimeInitialized: !!window.hypeModuleInitialized,
-          },
-        }),
-      );
-    } catch {
-      // best-effort, ignore if CustomEvent dispatch fails in odd environments
-    }
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      void __hype_loader_init();
-    });
-  } else {
-    void __hype_loader_init();
   }
+
+  // Expose optional auth helpers only when an auth client is provided.
+  return {
+    loadHypeRuntime,
+    getCsrfToken: auth?.getCsrfToken ? () => auth.getCsrfToken!() : async () => null,
+    login: auth?.login ? (u: string, p: string) => auth.login!(u, p) : async () => ({ ok: false }),
+    logout: auth?.logout ? () => auth.logout!() : async () => ({ ok: false }),
+    me: auth?.me ? () => auth.me!() : async () => ({ ok: false }),
+    bindLoginForm: auth?.bindLoginForm ? (scope: ParentNode = document) => auth.bindLoginForm!(scope) : () => {},
+    bindLogoutButtons: auth?.bindLogoutButtons ? (scope: ParentNode = document) => auth.bindLogoutButtons!(scope) : () => {},
+  };
 }
 
 /* ---------------------------
-   Default export (convenience)
+   Notes
    --------------------------- */
 
-export default {
-  loadHypeRuntime,
-  getCsrfToken,
-  login,
-  logout,
-  me,
-  bindLoginForm,
-  bindLogoutButtons,
-};
+/*
+  The loader no longer performs auto-init on DOMContentLoaded and does not
+  import an application auth client. Consumers should create a loader and use
+  the returned helpers explicitly, for example:
+
+    const loader = createLoader({ hypePath: '/static/js/hype.js', authClient });
+    await loader.loadHypeRuntime();
+
+  This keeps the core package minimal and unopinionated. Convenience helpers
+  for auth/CRUD/UI should live in optional plugins or example code.
+*/
+
+export default createLoader;

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-labelledby="snap3Title snap3Desc">
+  <title id="snap3Title">Snap 3 Placeholder</title>
+  <desc id="snap3Desc">Decorative gradient placeholder image used for the snap gallery demo (CSP-safe).</desc>
+
+  <defs>
+    <linearGradient id="grad-snap3" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#06b6d4"/>
+      <stop offset="0.5" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+
+    <radialGradient id="radial-spot" cx="0.25" cy="0.2" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="soft-shadow-3" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <!-- Background gradient -->
+  <rect width="1200" height="800" fill="url(#grad-snap3)"/>
+
+  <!-- Subtle texture shapes -->
+  <g opacity="0.06" fill="#ffffff">
+    <ellipse cx="200" cy="120" rx="120" ry="80"/>
+    <ellipse cx="980" cy="680" rx="160" ry="100"/>
+    <ellipse cx="760" cy="210" rx="100" ry="60"/>
+  </g>
+
+  <!-- Radial vignette -->
+  <rect width="1200" height="800" fill="url(#radial-spot)"/>
+
+  <!-- Framed content area -->
+  <g>
+    <rect x="48" y="48" width="1104" height="704" rx="14" ry="14" fill="rgba(255,255,255,0.04)"/>
+    <rect x="72" y="600" width="380" height="96" rx="10" ry="10" fill="rgba(0,0,0,0.16)" filter="url(#soft-shadow-3)"/>
+    <text x="96" y="660" font-family="Inter, Arial, Helvetica, sans-serif" font-size="28" fill="#ffffff" font-weight="700">Snap 3</text>
+    <text x="96" y="692" font-family="Inter, Arial, Helvetica, sans-serif" font-size="14" fill="#ffffff" opacity="0.95">Gradient placeholder (CSP-safe)</text>
+  </g>
+
+  <!-- Decorative badge -->
+  <g transform="translate(960,32)" opacity="0.95">
+    <rect x="-10" y="-10" width="180" height="44" rx="10" ry="10" fill="rgba(255,255,255,0.12)"/>
+    <text x="80" y="18" text-anchor="middle" font-family="Inter, Arial, Helvetica, sans-serif" font-size="13" fill="#fff">Placeholder</text>
+  </g>
+
+</svg>

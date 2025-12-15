@@ -50,10 +50,14 @@
     </section>
   </div>
 
-  <!-- Tiny bootstrap: one import + one init (top-level await in module) -->
+  <!-- Tiny bootstrap: explicit ESM factory import (recommended) -->
   <script nonce="%CSP_NONCE%" type="module" async>
-    const m = await import('/static/js/hype.js');
-    (typeof m.createHype === 'function' ? m.createHype() : (m.default ?? m)).init?.();
+    import { createHype } from '/static/js/hype.js';
+    // Use the factory to get a runtime instance you control. Passing `root`
+    // ensures Hype mounts to the document body; the factory may auto-init by default.
+    const hype = createHype({ root: document.body });
+    // If you prefer explicit initialization, uncomment the following line:
+    // hype.init();
   </script>
 </body>
 </html>

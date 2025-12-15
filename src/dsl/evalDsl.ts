@@ -233,19 +233,7 @@ export function evalDsl(node: DslNode, ctx: EvalContext): any {
         const path = typeof pathNode === "string" ? pathNode : evalDsl(pathNode, ctx);
         const val = evalDsl(valNode, ctx);
         // Debug: log set operations to help diagnose reactive failures
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[evalDsl][set] path:", path, "value:", val, "before:", getPath(ctx.state, path));
-        } catch {
-          /* ignore debug failures */
-        }
         setPath(ctx.state, path, val);
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[evalDsl][set] path:", path, "value set:", val, "after:", getPath(ctx.state, path));
-        } catch {
-          /* ignore debug failures */
-        }
         return val;
       }
 
@@ -255,19 +243,7 @@ export function evalDsl(node: DslNode, ctx: EvalContext): any {
         const cur = getPath(ctx.state, path);
         const next = !cur;
         // Debug: log toggle operations to help diagnose reactive visibility issues
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[evalDsl][toggle] path:", path, "current:", cur, "next:", next);
-        } catch {
-          /* ignore debug failures */
-        }
         setPath(ctx.state, path, next);
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[evalDsl][toggle] path:", path, "value after toggle:", getPath(ctx.state, path));
-        } catch {
-          /* ignore debug failures */
-        }
         return next;
       }
 

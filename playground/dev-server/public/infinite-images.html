@@ -2,77 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport</head>" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Infinite Images — Hype Playground</title>
   <meta name="description" content="Infinite images example using IntersectionObserver. Progressive enhancement friendly; works with or without the Hype runtime." />
   <link rel="stylesheet" href="/tailwind.css">
 </head>
 
-<body class="bg-gray-400 p-8 bg-gradient-to-b from-teal-800 to-gray-400">
+<body class="min-h-screen bg-gradient-to-b from-teal-800 to-gray-400 p-8 text-white">
   <div class="max-w-4xl mx-auto">
     <header class="mb-8">
-        <h1 class="text-7xl md:text-8xl  text-white leading-none tracking-tighter font-thin">
-            Infinite Images
+      <h1 class="text-7xl md:text-8xl text-white leading-none tracking-tighter font-thin">
+        Infinite Images
         <span class="ml-auto block mt-3 mb-7 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-rose-400 to-amber-400 tracking-tighter">
-            trigger revealed
+          trigger revealed
         </span>
-        </h1>
-        <p class="text-teal-200 text-xs " >An example demonstrating IntersectionObserver-driven infinite loading and a gallery. Works without the Hype runtime; if Hype & the behavior plugin are present you can use declarative attributes like <code>data-hype-trigger="revealed"</code>.</p>
-        <div class="controls" aria-hidden="true">
-          <a class="btn" href="/">Back</a>
-          <button id="reloadBtn" class="btn" title="Reload gallery">Reload</button>
+      </h1>
+
+      <p class="text-teal-200 text-xs">
+        An example demonstrating IntersectionObserver-driven infinite loading and a gallery. Works without the Hype runtime;
+        if Hype & the behavior plugin are present you can use declarative attributes like
+        <code class="bg-white/6 px-1 rounded">data-hype-trigger="revealed"</code>.
+      </p>
+
+      <div class="mt-4 flex gap-2" aria-hidden="true">
+
+        <div class="flex items-center gap-3">
+          <nav aria-label="page navigation" class="hidden sm:flex gap-3">
+            <a class="text-slate-200/80 hover:text-white text-sm" href="/">← Back to examples</a>
+            <!--<a class="text-slate-200/80 hover:text-white text-sm" href="/live.html">WebSocket example</a>-->
+          </nav>
         </div>
-        <!--<h1 class="text-3xl font-bold text-gray-900 mb-2"></h1>-->
-      <!--<p class="text-gray-600 text-thin">Replacing verbose Django + JavaScript with Hype Reactive</p>-->
     </header>
 
-    <section class=".." aria-labelledby="gallery-heading">
-      <h2 id="gallery-heading" style="margin:0 0 8px 0">Gallery</h2>
-      <p class="meta small" style="margin:0 0 12px 0">Images are loaded from <code>https://</code>picsum.photos</code> (placeholder). The sentinel at the end triggers more loads as it becomes visible.</p>
+    <!-- Snap gallery section -->
+    <section class="card mb-6 bg-black" aria-labelledby="snap-heading">
+      <h2 id="snap-heading" class="text-2xl font-semibold mb-2">Snap Gallery (demo)</h2>
+      <p class="text-sm text-slate-200 mb-3">
+        Demonstrates a horizontal scroll-snap layout. Use the next/prev buttons to navigate;
+        Hype's snap behavior (if enabled) will also update <code>--active-index</code></code> on the container.
+      </p>
 
-      <!-- Reactive root (example: Hype could manage this state) -->
-      <div id="galleryRoot" data-hype-state='{"items": [], "page": 1, "loading": false}'>
-        <!-- Template-driven item prototype. Authors provide a <template> and data is injected by the helper.
-             Keep markup dumb; the runtime will clone and populate the template. -->
-        <template id="photo-tpl">
-          <li class="item"><img src="{{src}}" alt="{{alt}}"></li>
-        </template>
+      <!-- Snap container: Tailwind scroll-snap utilities and horizontal scrolling -->
+      <div class="space-y-3">
+        <div
+          id="snapContainer"
+          role="region"
+          aria-label="Snap gallery"
+          data-hype-trigger="snap"
+          data-hype-active-display="#activeIdx"
+          data-hype-root="this"
+          class="overflow-x-auto scroll-smooth snap-x snap-center snap-mandatory flex gap-4 py-3 -mx-4 px-4"
+          style="scroll-padding-left: 1rem;"
+        >
+          <!-- Each immediate child is a snap point. Use fixed width and prevent shrinking so items don't collapse. -->
+          <div class="snap-start flex-none w-[66%] sm:w-[55%] md:w-[45% rounded-lg overflow-hidden bg-white/5">
+            <img src="/static/images/snap1.svg" alt="Snap 1" class="block w-full h-56 sm:h-64 md:h-72 object-cover" />
+          </div>
 
-        <ul id="imageGrid" class="grid" aria-live="polite" aria-busy="false" role="list" style="list-style:none;margin:0;padding:0;"></ul>
+          <div class="snap-start flex-none w-[66%] sm:w-[55%] md:w-[45%] rounded-lg overflow-hidden bg-white/5">
+            <img src="/static/images/snap2.svg" alt="Snap 2" class="block w-full h-56 sm:h-64 md:h-72 object-cover" />
+          </div>
 
-        <!-- Sentinel used by behavior wiring. Declarative attributes:
-             - data-hype-trigger="revealed:repeat" => repeatedly trigger when visible
-             - data-hype-get="" (optional) => fetch URL template with {page} interpolation
-             - data-hype-target="#imageGrid" => where appended nodes go
-             - data-hype-template="#photo-tpl" => which template to use
-        -->
-        <div id="sentinel" class="sentinel" aria-hidden="true"
-             data-hype-trigger="infinite:8:repeat"
-             data-hype-get=""
-             data-hype-target="#imageGrid"
-             data-hype-template="#photo-tpl"
-             data-hype-root-margin="0px 0px 400px 0px"></div>
+          <div class="snap-start flex-none w-[66%] sm:w-[55%] md:w-[45% rounded-lg overflow-hidden bg-white/5">
+            <img src="/static/images/snap3.svg" alt="Snap 3" class="block w-full h-56 sm:h-64 md:h-72 object-cover" />
+          </div>
 
-        <div id="status" class="meta" style="margin-top:12px"></div>
+          <div class="snap-start flex-none w-[66%] sm:w-[55%] md:w-[45% rounded-lg overflow-hidden bg-white/5">
+            <img src="/static/images/snap1.svg" alt="Snap 4" class="block w-full h-56 sm:h-64 md:h-72 object-cover" />
+          </div>
+
+          <div class="snap-start flex-none w-[66%] sm:w-[55%] md:w-[45%] rounded-lg overflow-hidden bg-white/5">
+            <img src="/static/images/snap2.svg" alt="Snap 5" class="block w-full h-56 sm:h-64 md:h-72 object-cover" />
+          </div>
+
+
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button class="btn" data-hype-snap-prev data-hype-snap-target="#snapContainer" aria-label="Previous">Prev</button>
+          <button class="btn" data-hype-snap-next data-hype-snap-target="#snapContainer" aria-label="Next">Next</button>
+          <div class="text-sm ml-2">Active index: <span id="activeIdx" data-hype-snap-display data-hype-snap-target="#snapContainer">0</span></div>
+        </div>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="snap-heading">
-      <h2 id="snap-heading" style="margin:0 0 8px 0">Snap Gallery (demo)</h2>
-      <p class="meta small" style="margin:0 0 12px 0">Demonstrates scroll-snap layout. Use the next/prev buttons to navigate; Hype's 'snap' behavior (if enabled) will also update <code>--active-index</code> on the container when</code> children change visibility.</p>
+    <!-- Grid gallery / infinite loading -->
+    <section class="card mb-6 bg-black" aria-labelledby="gallery-heading">
+      <h2 id="gallery-heading" class="text-2xl font-semibold mb-2">Gallery</h2>
+      <p class="text-sm text-slate-200 mb-3">
+        Images are loaded from <code class="bg-white/6 px-1 rounded">picsum.photos</code> (placeholder).
+        The sentinel at the end triggers more loads as it becomes visible.
+      </p>
 
-      <div class="snap-wrap">
-        <div id="snapContainer" class="snap-gallery" data-hype-trigger="snap" aria-label="Snap gallery" data-hype-active-display="#activeIdx">
-          <div class="snap-item"><img src="https://picsum.photos/id/1015/1200/800" alt="Snap 1"></div>
-          <div class="snap-item"><img src="https://picsum.photos/id/1016/1200/800" alt="Snap 2"></div>
-          <div class="snap-item"><img src="https://picsum.photos/id/1018/1200/800" alt="Snap 3"></div>
-        </div>
+      <div id="galleryRoot" data-hype-state='{"items": [], "page": 1, "loading": false}'>
+        <template id="photo-tpl">
+          <li class="rounded overflow-hidden bg-white shadow-sm">
+            <img src="{{src}}" alt="{{alt}}" class="w-full h-48 object-cover" />
+          </li>
+        </template>
 
-        <div class="snap-controls">
-          <button class="btn" data-hype-snap-prev data-hype-snap-target="#snapContainer" aria-label="Previous">Prev</button>
-          <button class="btn" data-hype-snap-next data-hype-snap-target="#snapContainer" aria-label="Next">Next</button>
-          <div class="small" style="margin-left:8px">Active index: <span id="activeIdx" data-hype-snap-display data-hype-snap-target="#snapContainer">0</span></div>
-        </div>
+        <ul id="imageGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-4" aria-live="polite" aria-busy="false" role="list">
+          <li class="rounded overflow-hidden bg-white shadow-sm"><img src="/static/images/photo1.svg" alt="Image 1" class="w-full h-48 object-cover" /></li>
+          <li class="rounded overflow-hidden bg-white shadow-sm"><img src="/static/images/photo2.svg" alt="Image 2" class="w-full h-48 object-cover" /></li>
+          <li class="rounded overflow-hidden bg-white shadow-sm"><img src="/static/images/photo1.svg" alt="Image 3" class="w-full h-48 object-cover" /></li>
+        </ul>
+
+        <!-- Sentinel used by behavior wiring. Declarative attributes explained in comments. -->
+        <div
+          id="sentinel"
+          class="h-6"
+          aria-hidden="true"
+          data-hype-trigger="infinite:8:repeat"
+          data-hype-get=""
+          data-hype-target="#imageGrid"
+          data-hype-template="#photo-tpl"
+          data-hype-root-margin="0px 0px 400px 0px"
+        ></div>
+
+        <div id="status" class="meta mt-3 text-sm text-slate-200"></div>
       </div>
     </section>
 
@@ -81,9 +128,10 @@
     </footer>
   </div>
 
-  <!-- Hype runtime (dev server serves static JS at /static/js/hype.js when available) -->
-  <script src="/static/js/hype.js" defer></script>
-
-
+  <!-- Hype runtime -->
+  <script nonce="%CSP_NONCE%" type="module" async>
+    const m = await import('/static/js/hype-rx.js');
+    m.createHype();
+  </script>
 </body>
 </html>

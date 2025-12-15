@@ -33,6 +33,9 @@ _NC=$'\033[0m'
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
+# Default list of services for package-manager helpers.
+# Define early to avoid unbound-variable errors when helpers run before later declarations.
+DEFAULT_PM_SERVICES=(dev backend build)
 
 # Detect docker compose command: prefer `docker compose` if available, else fallback to `docker-compose`
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -92,18 +95,37 @@ function up_and_follow() {
   $DOCKER_COMPOSE -f "${COMPOSE_FILE}" logs -f "${service}"
 }
 
+# Helper: print a short meta header (orange)
+function meta() {
+  local msg="$*"
+  # Print a concise, easily greppable meta line used across helpers
+  echo -e "${_YELLOW}-> ${msg}${_NC}"
+}
+
 # Helper: run a docker-compose run --rm SERVICE (useful for build/test/docs)
+# This wrapper prints a short meta header (orange) indicating the action and offers
+# an immediate hint if the command fails so the user can connect to the container.
 function run_once() {
   local service=$1
   shift || true
   # Safely format remaining arguments without triggering "unbound variable" under strict shell options.
   # Only reference the positional parameters when there are any left.
+  # Meta header for clarity (orange)
+  meta "run|enter the ${service}"
   if [[ $# -gt 0 ]]; then
     echo -e "${_BLUE}Running service:${_NC} ${service} \"${*}\""
   else
     echo -e "${_BLUE}Running service:${_NC} ${service}"
   fi
-  $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm "${service}" "$@"
+
+  # Execute and capture exit status to provide helpful hints on failure.
+  if ! $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm "${service}" "$@"; then
+    local rc=$?
+    echo -e "${_YELLOW}hint: if this fails, connect to the container to inspect the environment:${_NC}"
+    echo -e "${_YELLOW}  ./dev.sh shell ${service}${_NC}"
+    echo -e "${_YELLOW}hint: common issues: missing pnpm/npm in image, missing lockfile, or file permission errors${_NC}"
+    return ${rc}
+  fi
 }
 
 # Main dispatch
@@ -193,11 +215,59 @@ case "${COMMAND}" in
     ;;
 
   shell)
-    # Open an interactive shell in the `shell` service
-    echo -e "${_BLUE}Opening interactive shell service...${_NC}"
-    $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm shell
+    # Open an interactive shell in a service or run a command inside a service.
+    # Usage:
+    #   ./dev.sh shell                  -> open interactive shell in service 'shell' (default)
+    #   ./dev.sh shell backend          -> open interactive shell in service 'backend'
+    #   ./dev.sh shell dev "pnpm i"     -> run 'pnpm i' inside service 'dev' (non-interactive)
+    SERVICE="${1:-shell}"
+    shift || true
+    CMD="$*"
+
+    # If no command supplied and stdin is a TTY, attach / run an interactive shell.
+    if [[ -z "${CMD}" ]]; then
+      # Prefer attaching to an already-running container via 'exec' if available,
+      # otherwise fall back to a one-off 'run --rm -it'.
+      echo -e "${_BLUE}Opening interactive shell for service: ${SERVICE}${_NC}"
+      # Try to detect if the service has a running container
+      if $DOCKER_COMPOSE -f "${COMPOSE_FILE}" ps --quiet "${SERVICE}" >/dev/null 2>&1; then
+        # Attach to running container (preserve user when possible)
+        echo -e "${_BLUE}Attaching to running container for ${SERVICE}${_NC}"
+        # Use 'exec' to attach to the running container; fallback to sh if login shell not available.
+        $DOCKER_COMPOSE -f "${COMPOSE_FILE}" exec "${SERVICE}" sh -l || $DOCKER_COMPOSE -f "${COMPOSE_FILE}" exec "${SERVICE}" bash -l || $DOCKER_COMPOSE -f "${COMPOSE_FILE}" exec "${SERVICE}" /bin/sh
+      else
+        # No running container: run a one-off interactive container with TTY
+        echo -e "${_BLUE}No running container found for ${SERVICE}. Starting one-off interactive shell...${_NC}"
+        $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm --service-ports -e TERM="${TERM:-xterm-256color}" "${SERVICE}" sh -l || \
+          $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm --service-ports -e TERM="${TERM:-xterm-256color}" "${SERVICE}" bash -l || \
+          $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm --service-ports -e TERM="${TERM:-xterm-256color}" "${SERVICE}" /bin/sh
+      fi
+    else
+      # Non-interactive: run the provided command inside a transient container
+      echo -e "${_BLUE}Running command inside service ${SERVICE}: ${CMD}${_NC}"
+      # Use sh -c so the command string is executed by a shell inside the container.
+      $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm "${SERVICE}" sh -c "${CMD}"
+    fi
     ;;
 
+  update|chore)
+    # Run pnpm update across services (or targeted service(s)). Alias: chore
+    TARGETS=()
+    if [[ $# -gt 0 ]]; then
+      TARGETS=("$@")
+    else
+      TARGETS=("${DEFAULT_PM_SERVICES[@]}")
+    fi
+    for svc in "${TARGETS[@]}"; do
+      meta "pnpm update => ${svc}"
+      # try pnpm update; provide hint if it fails
+      if run_once "${svc}" pnpm update; then
+        echo -e "${_GREEN}pnpm update succeeded for ${svc}.${_NC}"
+      else
+        echo -e "${_YELLOW}Hint: inspect the container interactively: ./dev.sh shell ${svc}${_NC}"
+      fi
+    done
+    ;;
   logs)
     SERVICE=${1:-}
     if [[ -z "${SERVICE}" ]]; then
@@ -212,6 +282,105 @@ case "${COMMAND}" in
   down|stop)
     echo -e "${_YELLOW}Stopping and removing containers...${_NC}"
     $DOCKER_COMPOSE -f "${COMPOSE_FILE}" down
+    ;;
+
+  audit)
+    # Run package-manager audit across the main containers/services.
+    # Usage:
+    #   ./dev.sh audit           -> runs `pnpm audit` (or `npm audit`) where possible
+    #   ./dev.sh audit --fix     -> attempts `pnpm audit fix` / `npm audit fix` where supported
+    #
+    # This is intentionally best-effort: some images may not have pnpm installed or may
+    # not contain a package.json in the expected path. The script will try both pnpm and npm.
+    FIX=""
+    if [[ "${1:-}" == "--fix" ]]; then
+      FIX="--fix"
+      shift || true
+    fi
+
+    echo -e "${_BLUE}Running audit across services (dev, backend, build). Fix flag: ${FIX}${_NC}"
+
+    # Frontend/dev service: try pnpm first, fall back to npm
+    echo -e "${_BLUE}-> Auditing frontend (service: dev)${_NC}"
+    run_once dev pnpm audit ${FIX} || run_once dev npm audit ${FIX} || true
+
+    # Backend service: run audit inside container. Some backend images may require a command wrapper.
+    echo -e "${_BLUE}-> Auditing backend (service: backend)${_NC}"
+    run_once backend sh -c "pnpm audit ${FIX} || npm audit ${FIX}" || true
+
+    # Build service: if present it often has the repository tooling available
+    echo -e "${_BLUE}-> Auditing build service (service: build)${_NC}"
+    run_once build pnpm audit ${FIX} || run_once build npm audit ${FIX} || true
+
+    echo -e "${_GREEN}Audit complete. Review the output above for vulnerabilities.${_NC}"
+    ;;
+
+  install)
+    # Run pnpm install (or npm install) inside a service (default: backend).
+    # Usage: ./dev.sh install [service]
+    SVC="${1:-backend}"
+    echo -e "${_YELLOW}-> run|enter the ${SVC} : pnpm install${_NC}"
+    if $DOCKER_COMPOSE -f "${COMPOSE_FILE}" ps --quiet "${SVC}" >/dev/null 2>&1; then
+      # exec into running container
+      $DOCKER_COMPOSE -f "${COMPOSE_FILE}" exec "${SVC}" sh -c "if command -v pnpm >/dev/null 2>&1; then pnpm install || true; elif command -v npm >/dev/null 2>&1; then npm install || true; else echo 'no pnpm/npm in container'; fi" || \
+        echo -e "${_YELLOW}hint: connect to ${SVC} -> './dev.sh shell ${SVC}' to inspect and run commands interactively${_NC}"
+    else
+      # ephemeral run
+      $DOCKER_COMPOSE -f "${COMPOSE_FILE}" run --rm "${SVC}" sh -c "if command -v pnpm >/dev/null 2>&1; then pnpm install || true; elif command -v npm >/dev/null 2>&1; then npm install || true; else echo 'no pnpm/npm in image'; fi" || \
+        echo -e "${_YELLOW}hint: connect to ${SVC} -> './dev.sh shell ${SVC}' to inspect and run commands interactively${_NC}"
+    fi
+    ;;
+
+  up)
+    # Enhanced: two modes
+    #  - ./dev.sh up               -> runs `pnpm update` across default services (safe within semver)
+    #  - ./dev.sh up <service...>  -> runs `pnpm update` on the given services
+    #  - ./dev.sh up <pkg>         -> runs `pnpm up <pkg>` across default services
+    #  - ./dev.sh up <pkg> <svc...>-> runs `pnpm up <pkg>` on the specified services
+    if [[ $# -eq 0 ]]; then
+      # No args: run `pnpm update` across default pm services
+      for svc in "${DEFAULT_PM_SERVICES[@]}"; do
+        meta "pnpm update => ${svc}"
+        if run_once "${svc}" pnpm update; then
+          echo -e "${_GREEN}pnpm update succeeded for ${svc}.${_NC}"
+        else
+          echo -e "${_YELLOW}Hint: inspect the container interactively: ./dev.sh shell ${svc}${_NC}"
+        fi
+      done
+    else
+      # There are args. Interpret first arg as either a package spec (pkg) or a single service name.
+      PKG="$1"
+      shift || true
+      # If remaining args present, they are service targets. Otherwise default to DEFAULT_PM_SERVICES.
+      if [[ $# -gt 0 ]]; then
+        TARGETS=( "$@" )
+      else
+        TARGETS=( "${DEFAULT_PM_SERVICES[@]}" )
+      fi
+
+      # If the first token looks like a service name and only one arg was provided,
+      # treat it as a request to run `pnpm update` on that service.
+      if [[ ${#TARGETS[@]} -eq ${#DEFAULT_PM_SERVICES[@]} && " ${DEFAULT_PM_SERVICES[*]} " == *" ${PKG} "* && ${#DEFAULT_PM_SERVICES[@]} -gt 0 && "$#" -eq 0 ]]; then
+        # user invoked: ./dev.sh up <service>
+        local svc="${PKG}"
+        meta "pnpm update => ${svc}"
+        if run_once "${svc}" pnpm update; then
+          echo -e "${_GREEN}pnpm update succeeded for ${svc}.${_NC}"
+        else
+          echo -e "${_YELLOW}Hint: inspect the container interactively: ./dev.sh shell ${svc}${_NC}"
+        fi
+      else
+        # Treat first arg as a package spec and run `pnpm up <pkg>` across TARGETS
+        for svc in "${TARGETS[@]}"; do
+          meta "pnpm up ${PKG} => ${svc}"
+          if run_once "${svc}" pnpm up "${PKG}"; then
+            echo -e "${_GREEN}pnpm up ${PKG} succeeded in ${svc}.${_NC}"
+          else
+            echo -e "${_YELLOW}Hint: inspect the container interactively: ./dev.sh shell ${svc}${_NC}"
+          fi
+        done
+      fi
+    fi
     ;;
 
   help|--help|-h)

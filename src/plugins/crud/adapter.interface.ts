@@ -6,8 +6,8 @@
  * Purpose:
  * - Define a small, clear adapter interface that the CRUD plugin will use.
  * - Provide a minimal, well-documented REST adapter implementation suitable for
- *   immediate use or extension. The implementation uses Fetch and is intentionally
- *   dependency-free and conservative.
+ *   immediate use or extension. The implementation uses a configurable Fetcher
+ *   abstraction to avoid hardcoded global `fetch` usage.
  *
  * Notes:
  * - Keep this file focused on types and a small reference implementation.
@@ -15,6 +15,8 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type { Fetcher } from "../../interfaces/fetcher";
 
 export type ID = string | number;
 
@@ -95,12 +97,14 @@ export interface CrudAdapter<T = any> {
  * - pk: primary key field name used by adapter when needed (default: 'id')
  * - headersProvider: optional function to supply dynamic headers (auth/csrf)
  * - defaultPageSize: fallback page size
+ * - fetcher: optional Fetcher abstraction to use for HTTP calls (overrides global fetch)
  */
 export type RestAdapterOptions = {
   baseUrl: string;
   pk?: string;
   headersProvider?: HeadersProvider;
   defaultPageSize?: number;
+  fetcher?: Fetcher;
   /**
    * If true, the adapter will append `page` and `pageSize` as query params for lists.
    */
@@ -147,6 +151,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
   private headersProvider?: HeadersProvider;
   private defaultPageSize: number;
   private paginationAsQuery: boolean;
+  private fetcher?: Fetcher;
 
   constructor(opts: RestAdapterOptions) {
     if (!opts || !opts.baseUrl) {
@@ -157,6 +162,8 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
     this.headersProvider = opts.headersProvider;
     this.defaultPageSize = opts.defaultPageSize ?? 20;
     this.paginationAsQuery = opts.paginationAsQuery ?? true;
+    // Use provided fetcher or fall back to global fetch at call time.
+    this.fetcher = opts.fetcher;
   }
 
   protected async getHeaders(): Promise<Record<string, string>> {
@@ -210,7 +217,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
     const qp = this.paginationAsQuery ? buildQuery(safeParams) : "";
     const url = `${this.baseUrl}${qp}`;
     const headers = await this.getHeaders();
-    const res = await fetch(url, { method: "GET", headers, credentials: "same-origin" });
+    const res = await (this.fetcher ? this.fetcher(url, { method: "GET", headers, credentials: "same-origin" }) : fetch(url, { method: "GET", headers, credentials: "same-origin" }));
     const parsed = await this.handleResponse(res);
     // Expecting shape: { items: [...], total?, page?, pageSize? } OR an array (legacy)
     if (Array.isArray(parsed)) {
@@ -229,7 +236,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
   public async get(id: ID): Promise<T> {
     const headers = await this.getHeaders();
     const url = `${this.baseUrl}/${encodeURIComponent(String(id))}`;
-    const res = await fetch(url, { method: "GET", headers, credentials: "same-origin" });
+    const res = await (this.fetcher ? this.fetcher(url, { method: "GET", headers, credentials: "same-origin" }) : fetch(url, { method: "GET", headers, credentials: "same-origin" }));
     return this.handleResponse(res);
   }
 
@@ -239,7 +246,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
   public async create(payload: Record<string, any>): Promise<T> {
     const headers = await this.getHeaders();
     const url = this.baseUrl;
-    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload), credentials: "same-origin" });
+    const res = await (this.fetcher ? this.fetcher(url, { method: "POST", headers, body: JSON.stringify(payload), credentials: "same-origin" }) : fetch(url, { method: "POST", headers, body: JSON.stringify(payload), credentials: "same-origin" }));
     return this.handleResponse(res);
   }
 
@@ -249,7 +256,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
   public async update(id: ID, payload: Record<string, any>): Promise<T> {
     const headers = await this.getHeaders();
     const url = `${this.baseUrl}/${encodeURIComponent(String(id))}`;
-    const res = await fetch(url, { method: "PUT", headers, body: JSON.stringify(payload), credentials: "same-origin" });
+    const res = await (this.fetcher ? this.fetcher(url, { method: "PUT", headers, body: JSON.stringify(payload), credentials: "same-origin" }) : fetch(url, { method: "PUT", headers, body: JSON.stringify(payload), credentials: "same-origin" }));
     return this.handleResponse(res);
   }
 
@@ -259,7 +266,7 @@ export class RestAdapter<T = any> implements CrudAdapter<T> {
   public async delete(id: ID): Promise<DeleteResult> {
     const headers = await this.getHeaders();
     const url = `${this.baseUrl}/${encodeURIComponent(String(id))}`;
-    const res = await fetch(url, { method: "DELETE", headers, credentials: "same-origin" });
+    const res = await (this.fetcher ? this.fetcher(url, { method: "DELETE", headers, credentials: "same-origin" }) : fetch(url, { method: "DELETE", headers, credentials: "same-origin" }));
     const parsed = await this.handleResponse(res);
     // Accept { ok: true } or empty body -> success
     if (parsed === "" || parsed == null) return { ok: true };

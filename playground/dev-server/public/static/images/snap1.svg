@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-labelledby="titleDesc">
+  <title id="titleDesc">Snap 1 Placeholder</title>
+  <desc id="desc">Decorative gradient placeholder image used for the snap gallery demo.</desc>
+  <defs>
+    <linearGradient id="grad-snap1" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background gradient -->
+  <rect width="1200" height="800" fill="url(#grad-snap1)"/>
+
+  <!-- Decorative circles to add texture -->
+  <g opacity="0.08" fill="#ffffff">
+    <circle cx="200" cy="150" r="120"/>
+    <circle cx="1000" cy="650" r="180"/>
+    <circle cx="850" cy="200" r="90"/>
+  </g>
+
+  <!-- Content box -->
+  <g transform="translate(0,0)">
+    <rect x="48" y="48" width="1104" height="704" rx="12" ry="12" fill="rgba(255,255,255,0.06)"/>
+    <!-- Title plate -->
+    <rect x="72" y="600" width="360" height="96" rx="8" ry="8" fill="rgba(0,0,0,0.18)" filter="url(#soft-shadow)"/>
+    <text x="96" y="660" font-family="Inter, Arial, Helvetica, sans-serif" font-size="28" fill="#ffffff" font-weight="700">Snap 1</text>
+    <text x="96" y="692" font-family="Inter, Arial, Helvetica, sans-serif" font-size="14" fill="#ffffff" opacity="0.9">Gradient placeholder (CSP-safe)</text>
+  </g>
+</svg>

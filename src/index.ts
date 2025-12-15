@@ -23,6 +23,9 @@ export type {
   HypeAttributes,
 } from "./types";
 
+// Renderer host interface (export so consumers/tests can inject/mock hosts)
+export type { IRendererHost } from "./interfaces/renderer-host.interface";
+
 // Event system
 export { EventSystem, eventSystem } from "./events";
 

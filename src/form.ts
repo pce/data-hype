@@ -1,4 +1,5 @@
 import type { HttpMethod } from './types';
+import type { Fetcher } from './interfaces/fetcher';
 
 /**
  * Serialize a form to FormData, handling all standard input types
@@ -45,7 +46,7 @@ export function mergeValues(
 export function getSubmitButton(form: HTMLFormElement): HTMLButtonElement | HTMLInputElement | null {
   // Check if the form was submitted by a specific button
   const activeElement = document.activeElement;
-  
+
   if (
     activeElement &&
     (activeElement instanceof HTMLButtonElement || activeElement instanceof HTMLInputElement) &&
@@ -107,7 +108,7 @@ export function getFormMethod(form: HTMLFormElement, attributePrefix: string): H
 
   // Fall back to form's native method
   const method = form.getAttribute('method')?.toUpperCase() || 'GET';
-  
+
   if (['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     return method as HttpMethod;
   }
@@ -182,4 +183,52 @@ export function prepareRequestBody(
 
   // Default to FormData (multipart/form-data is automatic)
   return { body: formData };
+}
+
+/**
+ * Submit a form using the Fetcher abstraction.
+ *
+ * - `form`: the HTMLFormElement to submit
+ * - `attributePrefix`: attribute prefix used by Hype to determine custom action/method attributes
+ * - `fetcher`: optional Fetcher implementation (defaults to global fetch)
+ * - `options`:
+ *    - includeSubmitter: if true, include the clicked submit button's name/value
+ *    - encoding: override encoding (e.g. 'application/json', 'application/x-www-form-urlencoded')
+ *    - credentials: Request credentials (defaults to 'same-origin')
+ *
+ * Returns the raw Response from the underlying fetcher so callers can decide how to parse it.
+ */
+export async function submitForm(
+  form: HTMLFormElement,
+  attributePrefix: string,
+  fetcher?: Fetcher,
+  options?: { includeSubmitter?: boolean; encoding?: string; credentials?: RequestCredentials }
+): Promise<Response> {
+  const method = getFormMethod(form, attributePrefix);
+  const action = getFormAction(form, attributePrefix);
+
+  // serialize form and optionally include submitter
+  let formData = serializeForm(form);
+  if (options && options.includeSubmitter) {
+    const submitter = getSubmitButton(form);
+    includeSubmitButton(formData, submitter);
+  }
+
+  // encoding precedence: explicit option -> data-attribute on form -> undefined
+  const encoding = options?.encoding || form.getAttribute(`data-${attributePrefix}-encoding`) || undefined;
+  const { body, contentType } = prepareRequestBody(method, formData, encoding);
+
+  const headers: Record<string, string> = {};
+  if (contentType) headers['Content-Type'] = contentType;
+
+  const init: RequestInit = {
+    method,
+    credentials: options?.credentials ?? 'same-origin',
+    headers,
+    body: body as BodyInit,
+  };
+
+  const usedFetch = fetcher ?? ((input: RequestInfo, init?: RequestInit) => fetch(input, init));
+  const resp = await usedFetch(action, init);
+  return resp;
 }

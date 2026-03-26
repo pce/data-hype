@@ -95,6 +95,22 @@ const DEFAULT_CONFIG: HypeConfig = {
  */
 
 export class Hype {
+  /**
+   * Map of named Hype instances created from `data-hype-root="name"` attributes.
+   *
+   * When `createHype()` auto-discovers `[data-hype-root]` elements at boot, instances
+   * whose root element carries a non-empty `data-hype-root` value (e.g.
+   * `<div data-hype-root="widget-a">`) are stored here under that name so other code
+   * can retrieve them:
+   *
+   * ```ts
+   * const widgetA = Hype.instances.get("widget-a");
+   * ```
+   *
+   * Anonymous roots (`<body data-hype-root>` / `data-hype-root=""`) are not stored here.
+   */
+  public static readonly instances: Map<string, Hype> = new Map();
+
   private config: HypeConfig;
   private events: IEventSystem;
   private interceptors: InterceptorRegistry;
@@ -172,11 +188,11 @@ export class Hype {
     // Normalize attributePrefix to a base (strip leading 'data-' if present) and ensure non-empty.
     try {
       let ap = (this.config as any).attributePrefix;
-      if (typeof ap !== 'string' || !ap || !ap.length) {
+      if (typeof ap !== "string" || !ap || !ap.length) {
         ap = DEFAULT_CONFIG.attributePrefix;
       }
       // If consumer passed a `data-` prefixed value, normalize to the base name.
-      if (ap.startsWith('data-')) {
+      if (ap.startsWith("data-")) {
         ap = ap.slice(5);
       }
       (this.config as any).attributePrefix = ap;
@@ -263,12 +279,7 @@ export class Hype {
       const html: string | undefined = msg.html;
       const payload = msg.payload;
 
-      const target =
-        typeof targetSel === "string"
-          ? document.querySelector(targetSel)
-          : targetSel instanceof Element
-          ? targetSel
-          : null;
+      const target = typeof targetSel === "string" ? document.querySelector(targetSel) : targetSel instanceof Element ? targetSel : null;
 
       switch (type) {
         case "snapshot":
@@ -428,12 +439,12 @@ export class Hype {
    * cryptographically stronger; switch to it on both client and server if
    * you need collision resistance or security guarantees.
    */
-  private async computeFingerprint(input: string, opts?: { algorithm?: 'fnv1a64' | 'fnv1a32' }): Promise<string> {
-    const desired = (opts && opts.algorithm) || 'fnv1a64';
+  private async computeFingerprint(input: string, opts?: { algorithm?: "fnv1a64" | "fnv1a32" }): Promise<string> {
+    const desired = (opts && opts.algorithm) || "fnv1a64";
     const s = typeof input === "string" ? input : String(input ?? "");
 
     // Prefer BigInt/TextEncoder path for 64-bit FNV-1a when requested.
-    if (desired === 'fnv1a64') {
+    if (desired === "fnv1a64") {
       try {
         const encoder = new TextEncoder();
         const bytes = encoder.encode(s);
@@ -574,17 +585,21 @@ export class Hype {
     // Prepare a deferred scan that performs heavier DOM wiring. The scan can be
     // executed immediately, scheduled on requestIdleCallback, or skipped.
     const doScan = () => {
+      // Resolve the scan root: prefer the explicitly mounted root, fall back to document.body.
+      // This ensures mount() + run() and mount() + scan() are consistent — both respect rootElement.
+      const scanRoot = (this.rootElement as HTMLElement) ?? document.body;
+
       try {
-        // Initialize reactive system on document body
-        this.reactive.init(document.body);
+        // Initialize reactive system on the scoped root (not always document.body)
+        this.reactive.init(scanRoot);
       } catch {
         /* ignore reactive init errors */
       }
 
-      // Set up mutation observer for dynamically added elements
+      // Set up mutation observer scoped to the mounted root
       try {
         this.observer = new MutationObserver(this.handleMutations.bind(this));
-        this.observer.observe(document.body, {
+        this.observer.observe(scanRoot, {
           childList: true,
           subtree: true,
         });
@@ -623,7 +638,7 @@ export class Hype {
             }
           }
         });
-        this._activeIndexObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-hype-active-index"] });
+        this._activeIndexObserver.observe(scanRoot, { subtree: true, attributes: true, attributeFilter: ["data-hype-active-index"] });
       } catch {
         /* ignore observer errors */
       }
@@ -650,13 +665,16 @@ export class Hype {
       try {
         const ric = (window as any).requestIdleCallback;
         if (typeof ric === "function") {
-          ric(() => {
-            try {
-              doScan();
-            } catch {
-              /* ignore scan errors */
-            }
-          }, { timeout: 200 });
+          ric(
+            () => {
+              try {
+                doScan();
+              } catch {
+                /* ignore scan errors */
+              }
+            },
+            { timeout: 200 },
+          );
         } else {
           // Fallback small delay
           setTimeout(() => {
@@ -689,7 +707,7 @@ export class Hype {
       // The instance is initialized but heavy DOM wiring is intentionally deferred/disabled.
     }
   }
-  
+
   /**
    * Public convenience: perform a reactive scan (bootstrap) on the mounted root or a provided element.
    *
@@ -745,9 +763,10 @@ export class Hype {
     try {
       // Prefer a rendererHost-resolved root when a host adapter is present. This allows
       // non-DOM hosts to determine the appropriate element/document mapping.
-      const initTarget = this.rendererHost && typeof this.rendererHost.resolveRoot === "function"
-        ? ((this.rendererHost.resolveRoot(target as any) as HTMLElement) ?? (target as HTMLElement))
-        : (target as HTMLElement);
+      const initTarget =
+        this.rendererHost && typeof this.rendererHost.resolveRoot === "function"
+          ? ((this.rendererHost.resolveRoot(target as any) as HTMLElement) ?? (target as HTMLElement))
+          : (target as HTMLElement);
 
       (this.reactive as any).init(initTarget as HTMLElement);
     } catch (err) {
@@ -816,7 +835,7 @@ export class Hype {
       console.info("[Hype.mount] mounted to root:", resolved);
     }
   }
-  
+
   /**
    * Deferred autowire helper.
    *
@@ -926,7 +945,7 @@ export class Hype {
     // Remove global reference if we published it
     try {
       // Use a typed view of window to avoid `any`.
-      const win = (window as unknown as { hype?: Hype });
+      const win = window as unknown as { hype?: Hype };
       if (typeof window !== "undefined" && win.hype === this) {
         try {
           delete win.hype;
@@ -955,7 +974,7 @@ export class Hype {
     // This ensures environments/tests that expect `window.hype` to be cleared won't see a stale reference.
     try {
       // Use a typed view of window to avoid `any`.
-      const win = (window as unknown as { hype?: Hype });
+      const win = window as unknown as { hype?: Hype };
       if (typeof window !== "undefined" && win.hype === this) {
         try {
           delete win.hype;
@@ -1179,7 +1198,7 @@ export class Hype {
 
       // Make the fetch request using the injected fetcher if present.
       // Falls back to the global fetch when this.fetch isn't provided.
-      const usedFetch = (this.fetch ?? ((input: RequestInfo, init?: RequestInit) => fetch(input, init)));
+      const usedFetch = this.fetch ?? ((input: RequestInfo, init?: RequestInit) => fetch(input, init));
       const response = await usedFetch(interceptedCtx.url, interceptedCtx.init);
 
       clearTimeout(timeoutId);
@@ -1292,7 +1311,12 @@ export class Hype {
     }
 
     // Fingerprint attribute name (data- prefixed) derived from configured prefix base
-    const base = typeof this.config.attributePrefix === 'string' ? (this.config.attributePrefix.startsWith('data-') ? this.config.attributePrefix.slice(5) : this.config.attributePrefix) : 'hype';
+    const base =
+      typeof this.config.attributePrefix === "string"
+        ? this.config.attributePrefix.startsWith("data-")
+          ? this.config.attributePrefix.slice(5)
+          : this.config.attributePrefix
+        : "hype";
     const dataFpAttr = `data-${base}-fp`;
 
     // Read current fingerprint from the target (only data- variant)
@@ -1684,7 +1708,7 @@ export class Hype {
 export function createHype(
   config?: Partial<HypeConfig> & { root?: string | Element; host?: IRendererHost },
   deps: { events?: IEventSystem; host?: IRendererHost; fetch?: Fetcher; transport?: PubSubTransport } | boolean = {},
-  autoInit: boolean = true
+  autoInit: boolean = true,
 ): Hype {
   // Backwards-compatibility: callers historically passed `false` as the second argument
   // to indicate `autoInit = false`. Support that legacy call-site shape by normalizing
@@ -1776,11 +1800,11 @@ export function createHype(
     try {
       if (!scopeRoot) return;
       // Prefer Element as container; if provided a Document, use its documentElement.
-      const container: Element | null = scopeRoot instanceof Element ? scopeRoot : (scopeRoot as Document).documentElement ?? null;
+      const container: Element | null = scopeRoot instanceof Element ? scopeRoot : ((scopeRoot as Document).documentElement ?? null);
       if (!container) return;
 
-      const prefix = instance.getConfig().attributePrefix || 'hype';
-      const base = prefix.startsWith('data-') ? prefix.slice(5) : prefix;
+      const prefix = instance.getConfig().attributePrefix || "hype";
+      const base = prefix.startsWith("data-") ? prefix.slice(5) : prefix;
       const attrName = `data-${base}-ws-url`;
       // Only match the data- prefixed attribute for consistent markup-first usage
       const selector = `[${attrName}]`;
@@ -1837,7 +1861,9 @@ export function createHype(
             if (!defaultUrl) return;
             const t = getTransportFor(defaultUrl);
             if (t && typeof (t as any).publish === "function") {
-              try { (t as any).publish(topic, payload); } catch {}
+              try {
+                (t as any).publish(topic, payload);
+              } catch {}
             }
           } catch {}
         },
@@ -1846,32 +1872,50 @@ export function createHype(
             if (!defaultUrl) return { unsubscribe() {} };
             const t = getTransportFor(defaultUrl);
             if (t && typeof (t as any).subscribe === "function") {
-              try { return (t as any).subscribe(topic, handler); } catch { return { unsubscribe() {} }; }
+              try {
+                return (t as any).subscribe(topic, handler);
+              } catch {
+                return { unsubscribe() {} };
+              }
             }
             return { unsubscribe() {} };
-          } catch { return { unsubscribe() {} }; }
+          } catch {
+            return { unsubscribe() {} };
+          }
         },
         onRawMessage(handler: (m: any) => void) {
           rawHandlers.push(handler);
           for (const t of Array.from(pool.values())) {
-            try { t.onRawMessage?.(handler); } catch {}
+            try {
+              t.onRawMessage?.(handler);
+            } catch {}
           }
         },
       };
 
       // If the instance currently uses NoopTransport (no explicit injection), install delegator.
-      if ((((deps as any)?.transport) ?? NoopTransport) === NoopTransport) {
-        try { instance.transport = delegating; } catch {}
+      if (((deps as any)?.transport ?? NoopTransport) === NoopTransport) {
+        try {
+          instance.transport = delegating;
+        } catch {}
       }
 
       // Expose pool for consumers/plugins to inspect if desired (non-typed)
-      try { (instance as any).transportPool = pool; } catch {}
+      try {
+        (instance as any).transportPool = pool;
+      } catch {}
       // Rebind facades to ensure they use the (possibly) new transport
       instance.pub = (topic: string, payload?: any) => {
-        try { instance.transport?.publish(topic, payload); } catch {}
+        try {
+          instance.transport?.publish(topic, payload);
+        } catch {}
       };
       instance.onRemote = (topic: string, handler: (payload: any) => void) => {
-        try { return instance.transport?.subscribe(topic, handler) ?? { unsubscribe() {} }; } catch { return { unsubscribe() {} }; }
+        try {
+          return instance.transport?.subscribe(topic, handler) ?? { unsubscribe() {} };
+        } catch {
+          return { unsubscribe() {} };
+        }
       };
     } catch {
       /* swallow autowire errors */
@@ -1880,34 +1924,108 @@ export function createHype(
 
   // Run autowire now if we already have a mounted root (config.root mount succeeded).
   try {
-    autowireWsOnRoot(instance['rootElement'] ?? null);
+    autowireWsOnRoot(instance["rootElement"] ?? null);
   } catch {}
 
   // If autoInit is true and no explicit root was mounted, prefer to autowire the soon-to-be-mounted body.
   // This keeps backwards-compatible behavior for the default autoInit flow while still scoping to body,
   // not the entire document.
   try {
-    if (!instance['rootElement'] && autoInit && typeof document !== 'undefined') {
+    if (!instance["rootElement"] && autoInit && typeof document !== "undefined") {
       autowireWsOnRoot(document);
     }
   } catch {}
   if (autoInit) {
     try {
+      // --- data-hype-root auto-discovery ---
+      // When the document contains [data-hype-root] elements, Hype creates a scoped
+      // instance per root instead of falling back to document.body. This enables:
+      //
+      //   <body data-hype-root>            → single full-page scope (same as default)
+      //   <main data-hype-root>            → scoped to <main> only
+      //   <div data-hype-root="widget-a">  → named scope, stored in Hype.instances
+      //
+      // Named instances are accessible via: Hype.instances.get("widget-a")
+      //
+      // When no [data-hype-root] elements are found the behaviour is unchanged:
+      // the instance mounts to document.body (backwards-compatible default).
+      let handledByRootAttr = false;
       try {
-        // Mount to body if no explicit root provided; ignore failures.
-        if (typeof document !== "undefined") {
-          try {
-            instance.mount(document.body);
-          } catch {
-            // mount may already have been called or not applicable; ignore
+        if (!instance["rootElement"] && typeof document !== "undefined") {
+          const roots = Array.from(document.querySelectorAll<HTMLElement>("[data-hype-root]"));
+          if (roots.length > 0) {
+            handledByRootAttr = true;
+            roots.forEach((rootEl, idx) => {
+              // dataset.hypeRoot is "" for bare `data-hype-root` (anonymous) and a
+              // non-empty string for `data-hype-root="some-name"` (named scope).
+              const name = rootEl.dataset.hypeRoot ?? "";
+              if (idx === 0) {
+                // Reuse the already-created instance for the first discovered root.
+                try {
+                  instance.mount(rootEl);
+                } catch {
+                  /* already mounted or invalid root; continue */
+                }
+                instance.run();
+                if (name) {
+                  Hype.instances.set(name, instance);
+                }
+              } else {
+                // Each additional root gets its own sibling instance wired with the
+                // same config / dependency set as the primary instance.
+                try {
+                  const sibling = new (instance.constructor as typeof Hype)(config ?? {}, (deps as any)?.events, (deps as any)?.host ?? (config as any)?.host);
+                  sibling.fetch = (deps as any)?.fetch ?? defaultFetcher;
+                  sibling.transport = (deps as any)?.transport ?? NoopTransport;
+                  sibling.pub = (topic: string, payload?: any) => {
+                    try {
+                      sibling.transport?.publish(topic, payload);
+                    } catch {}
+                  };
+                  sibling.onRemote = (topic: string, handler: (payload: any) => void) => {
+                    try {
+                      return (
+                        sibling.transport?.subscribe(topic, handler) ?? {
+                          unsubscribe() {},
+                        }
+                      );
+                    } catch {
+                      return { unsubscribe() {} };
+                    }
+                  };
+                  sibling.mount(rootEl);
+                  sibling.run();
+                  if (name) {
+                    Hype.instances.set(name, sibling);
+                  }
+                } catch {
+                  /* ignore errors for additional root siblings */
+                }
+              }
+            });
           }
         }
       } catch {
-        /* ignore mount errors */
+        /* ignore root-attr discovery errors */
       }
 
-      // Start runtime via canonical entrypoint
-      instance.run();
+      if (!handledByRootAttr) {
+        // Fallback: no [data-hype-root] elements found — mount to body (existing behaviour).
+        try {
+          if (typeof document !== "undefined") {
+            try {
+              instance.mount(document.body);
+            } catch {
+              // mount may already have been called or not applicable; ignore
+            }
+          }
+        } catch {
+          /* ignore mount errors */
+        }
+
+        // Start runtime via canonical entrypoint
+        instance.run();
+      }
     } catch {
       // Swallow errors to keep factory safe for programmatic construction.
     }
@@ -1923,8 +2041,6 @@ export function createHype(
  * manage lifecycle explicitly should call `createHype(...)` themselves.
  */
 export const hype: Hype = createHype(undefined, {}, true);
-
-
 
 // Re-export common built-in plugins from the `plugins` directory so consumers can
 // import them directly from the main package (e.g. `import { pubsubPlugin } from './hype'`).

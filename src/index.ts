@@ -57,6 +57,7 @@ export { Hype, createHype, hype } from "./hype";
 // These are lightweight re-exports of the optional plugin modules and do not force the plugins to be attached to Hype.
 export { createHypePubsub, attachToHype, pubsubPlugin } from "./plugins/pubsub";
 export { createBehaviorRegistry, parseTriggerSpec, attachBehaviorsFromAttribute, attachDebounce, behaviorPlugin } from "./plugins/behavior";
+export { createCsrfPlugin, csrfPlugin } from "./plugins/csrf";
 
 // Default export
 export { hype as default } from "./hype";

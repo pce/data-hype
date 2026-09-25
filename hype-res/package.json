@@ -1,0 +1,12 @@
+{
+  "name": "hype-res",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "res:build": "rescript",
+    "res:dev": "rescript -w"
+  },
+  "devDependencies": {
+    "rescript": "^12.3.0"
+  }
+}

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="caHlwZXItcmV" />
+  <title>declarative hyperscript</title>
+
+  <link rel="stylesheet" href="./styles/base.css">
+  <link rel="stylesheet" href="./styles/layout.css">
+  <link rel="stylesheet" href="./styles/components.css">
+  <link rel="stylesheet" href="./styles/loading-states.css">
+  <style>
+
+    /* Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    aside {
+      background-color: var(--bg-primary);
+      border-right: 1px solid var(--border-color);
+      padding: 2rem 1.5rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    aside h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-tertiary);
+      margin-bottom: 1.5rem;
+      font-weight: 600;
+    }
+
+    aside ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    aside li {
+      margin-bottom: 0.5rem;
+    }
+
+    aside a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    aside a:hover {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    aside a.active {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* Main content */
+    main {
+      padding: 3rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+    }
+
+    /* Sections */
+    section {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    section h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    section p {
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    section code {
+      background-color: var(--code-bg);
+      color: var(--code-text);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9em;
+    }
+
+    section pre {
+      background-color: var(--code-bg);
+      color: var(--code-text);
+      padding: 1.5rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1rem 0;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9em;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Buttons */
+    .btn {
+      background-color: var(--accent-color);
+      color: var(--bg-primary);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: transform 0.1s ease, box-shadow 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn:hover {
+      transform: none;
+      box-shadow: 0 4px 12px var(--shadow-color);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-danger {
+      background-color: #ef4444;
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      background-color: #dc2626;
+    }
+
+    /* Cards */
+    .card {
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .card:hover {
+      transform: none;
+      box-shadow: 0 4px 12px var(--shadow-color);
+    }
+
+    .card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* Grid layout for cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Feed items */
+    .feed-item {
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .feed-item:hover {
+      transform: none;
+      box-shadow: 0 4px 12px var(--shadow-color);
+    }
+
+    .feed-item strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .feed-item em {
+      color: var(--text-secondary);
+      font-style: normal;
+    }
+
+    /* Container */
+    .container {
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+
+
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-tertiary);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--border-color);
+      margin-top: 3rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        display: none;
+      }
+
+      main {
+        padding: 1.5rem;
+      }
+
+      header h1 {
+        font-size: 2rem;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h2>Hyper Examples</h2>
+      <nav>
+        <ul>
+          <li><a href="#http-verbs" class="active">1. HTTP Verbs</a></li>
+          <li><a href="#json-payloads">2. JSON & Headers</a></li>
+          <li><a href="#flip-morph">3. FLIP Morph</a></li>
+          <li><a href="#lazy-scroll">4. Lazy Scroll</a></li>
+          <li><a href="#mutation">5. Mutation</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main>
+      <header>
+        <h1>hyper</h1>
+        <p>Zero-JS client interaction using ADT-driven engine bindings</p>
+      
+         <br />
+         <pre>
+  
+
+     ||> >    Prototype of a attribute-driven
+    //
+    >--       data oriented hyperscript-like runtime.
+
+
+        </pre>
+        <hr />
+        <br />
+      </header>
+
+      <!-- SECTION 1: Declarative HTTP Requests -->
+      <section id="http-verbs">
+        <h2>1. Declarative REST Requests</h2>
+        <p>Send async requests using attributes. No JavaScript needed.</p>
+        
+        <button 
+          class="btn"
+          data-hype-on="click"
+          hype-get="/api/status"
+          hype-target="#status-output"
+          hype-swap="innerHTML">
+          Fetch Status
+        </button>
+
+        <div id="status-output" class="feed-item" style="margin-top: 1rem;">
+          <em>Response will appear here...</em>
+        </div>
+      </section>
+
+      <!-- SECTION 2: Dynamic Values and CSRF Custom Headers -->
+      <section id="json-payloads">
+        <h2>2. JSON Payloads & Headers</h2>
+        <p>Pass dynamic JSON data using <code>hype-vals</code> and append custom JSON headers using <code>hype-headers</code>. Automatically merges the CSRF token from <code>&lt;meta name="csrf-token"&gt;</code>.</p>
+
+        <button 
+          class="btn"
+          data-hype-on="click" 
+          hype-post="/api/users/update" 
+          hype-target="#user-card"
+          hype-swap="innerHTML"
+          hype-vals='{"userId": 42, "role": "admin"}'
+          hype-headers='{"X-Custom-Client": "Hyper-v1.0"}'>
+          Update User Role
+        </button>
+
+        <div id="user-card" class="feed-item" style="margin-top: 1rem;">
+          <strong>User #42</strong>: Current Role: <em>Standard User</em>
+        </div>
+      </section>
+
+      <!-- SECTION 3: FLIP Layout Swap & Morphing -->
+      <section id="flip-morph">
+        <h2>3. FLIP Animation Layout Swap</h2>
+        <p>The <code>outerHTML</code> swap strategy calculates First, Last, Invert, and Play positions to smoothly animate geometry transitions across DOM state replacements.</p>
+
+        <div 
+          id="morph-card" 
+          class="feed-item" 
+          data-hype-on="click" 
+          hype-get="/api/card/expand" 
+          hype-target="#morph-card" 
+          hype-swap="outerHTML"
+          style="cursor: pointer; width: 200px; height: 80px;">
+          <strong>Compact Card</strong> (Click to Expand)
+        </div>
+      </section>
+
+      <!-- SECTION 4: Viewport Intersection Observer -->
+      <section id="lazy-scroll">
+        <h2>4. Infinite Scroll & Viewport Intersections</h2>
+        <p>Elements with <code>data-hype-intersect="viewport"</code> invoke network calls automatically as soon as they scroll into view.</p>
+
+        <div id="lazy-feed">
+          <div class="feed-item">Existing Feed Item #1</div>
+          <div class="feed-item">Existing Feed Item #2</div>
+        </div>
+
+        <!-- Trigger boundary for infinite scroll -->
+        <div 
+          data-hype-intersect="viewport" 
+          hype-get="/api/feed/page-2" 
+          hype-target="#lazy-feed" 
+          hype-swap="beforeend"
+          style="padding: 1rem; text-align: center; border: 1px dashed var(--border-color); margin-top: 1rem;">
+          <em>Loading more items when scrolled into view...</em>
+        </div>
+      </section>
+
+      <!-- SECTION 5: Mutation Rewiring -->
+      <section id="mutation">
+        <h2>5. Dynamic Mutation Rewiring</h2>
+        <p>When new nodes are inserted into the DOM (e.g. via <code>beforeend</code>), the global <code>MutationObserver</code> binds listeners to new interactive triggers dynamically.</p>
+
+        <button 
+          class="btn"
+          data-hype-on="click" 
+          hype-get="/api/feed/item-with-action" 
+          hype-target="#mutation-container" 
+          hype-swap="beforeend">
+          Append Interactive Item
+        </button>
+
+        <div id="mutation-container" class="container"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <p>Built with hyper -&gt; a progressive and unobtrousive &lt;- declarative UI</p>
+  </footer>
+
+  <!-- Load Hyper Engine -->
+  <script type="module" src="./src/hyper.res.mjs"></script>
+</body>
+</html>

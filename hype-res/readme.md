@@ -17,6 +17,17 @@ In mountable hype islands:
 2. **Behaviors** // what a node DOES when an event fires (navigate, show, hide, toggle, etc.)
 
 
+This is a ReScript 11 version
+
+     playground for another view on hyperscript
+          for instance dom-nodes as algebraic data types?
+
+
+- attr.prefix 
+- pnpm 
+- unit under test
+
+
 == Build 
 
 in a docker container:
